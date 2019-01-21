@@ -1,0 +1,35 @@
+# kate: indent-width 2;
+
+addons:
+  apt:
+    packages:
+    - g++-4.8
+
+matrix:
+  include:
+  - language: cpp
+    os: linux
+    compiler: gcc
+    env:
+    - JOBID=linux
+    addons:
+      apt:
+        packages:
+        - g++-4.8
+
+notifications:
+  webhooks:
+    urls:
+      - https://webhooks.gitter.im/e/00ec7a9066bb0fec98f3
+    on_success: change
+    on_failure: always
+    on_start: never
+
+install:
+- export COMPILE="g++-4.8 -std=c++11 -Wall -Wextra -pedantic"
+
+script:
+- cd test
+- $COMPILE CorradeOptional.cpp && ./a.out
+- $COMPILE CorradePointer.cpp && ./a.out
+- $COMPILE CorradeReference.cpp && ./a.out
