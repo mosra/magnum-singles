@@ -1,4 +1,22 @@
 /*
+    Corrade::Containers::Pointer
+        — a lightweight alternative to std::unique_ptr
+
+    https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Pointer.html
+
+    This is a single-header library generated from the Corrade project. With
+    the goal being easy integration, it's deliberately free of all comments
+    to keep the file size small. More info, changelogs and full docs here:
+
+    -   Project homepage — https://magnum.graphics/corrade/
+    -   Documentation — https://doc.magnum.graphics/corrade/
+    -   GitHub project page — https://github.com/mosra/corrade
+    -   GitHub Singles repository — https://github.com/mosra/magnum-singles
+
+    Generated from Corrade v2018.10-183-g4eb1adc0 (2019-01-23), 243 / 2315 LoC
+*/
+
+/*
     This file is part of Corrade.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
@@ -133,7 +151,7 @@ template<class T> class Pointer {
         explicit operator bool() const { return _pointer; }
 
         T* get() { return _pointer; }
-        const T* get() const { return _pointer; } /**< @overload */
+        const T* get() const { return _pointer; }
 
         T* operator->() {
             CORRADE_ASSERT(_pointer, "Containers::Pointer: the pointer is null", nullptr);
@@ -155,7 +173,7 @@ template<class T> class Pointer {
             return *_pointer;
         }
 
-        void reset(T* pointer) {
+        void reset(T* pointer = nullptr) {
             delete _pointer;
             _pointer = pointer;
         }
@@ -201,4 +219,25 @@ template<class T, class ...Args> inline Pointer<T> pointer(Args&&... args) {
 
 }}
 
+#endif
+#ifdef CORRADE_POINTER_STL_COMPATIBILITY
+#include <memory>
+#ifndef Corrade_Containers_PointerStl_h
+#define Corrade_Containers_PointerStl_h
+
+namespace Corrade { namespace Containers { namespace Implementation {
+
+template<class T> struct PointerConverter<std::unique_ptr<T>> {
+    static Pointer<T> from(std::unique_ptr<T>&& other) {
+        return Pointer<T>{other.release()};
+    }
+
+    static std::unique_ptr<T> to(Pointer<T>&& other) {
+        return std::unique_ptr<T>{other.release()};
+    }
+};
+
+}}}
+
+#endif
 #endif

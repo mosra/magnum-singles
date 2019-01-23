@@ -1,4 +1,22 @@
 /*
+    Corrade::Containers::Reference
+        — a lightweight alternative to std::reference_wrapper
+
+    https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Reference.html
+
+    This is a single-header library generated from the Corrade project. With
+    the goal being easy integration, it's deliberately free of all comments
+    to keep the file size small. More info, changelogs and full docs here:
+
+    -   Project homepage — https://magnum.graphics/corrade/
+    -   Documentation — https://doc.magnum.graphics/corrade/
+    -   GitHub project page — https://github.com/mosra/corrade
+    -   GitHub Singles repository — https://github.com/mosra/magnum-singles
+
+    Generated from Corrade v2018.10-183-g4eb1adc0 (2019-01-23), 109 / 1639 LoC
+*/
+
+/*
     This file is part of Corrade.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
@@ -49,7 +67,7 @@ template<class T> class Reference {
         }
 
         constexpr /*implicit*/ operator T&() const { return *_reference; }
-        constexpr /*implicit*/ operator Reference<const T>() const { return *_reference; } /**< @overload */
+        constexpr /*implicit*/ operator Reference<const T>() const { return *_reference; }
 
         constexpr T& get() const { return *_reference; }
 
@@ -67,4 +85,25 @@ template<class T> class Reference {
 
 }}
 
+#endif
+#ifdef CORRADE_POINTER_STL_COMPATIBILITY
+#include <functional>
+#ifndef Corrade_Containers_ReferenceStl_h
+#define Corrade_Containers_ReferenceStl_h
+
+namespace Corrade { namespace Containers { namespace Implementation {
+
+template<class T> struct ReferenceConverter<std::reference_wrapper<T>> {
+    static Reference<T> from(std::reference_wrapper<T> other) {
+        return other;
+    }
+
+    static std::reference_wrapper<T> to(Reference<T> other) {
+        return other;
+    }
+};
+
+}}}
+
+#endif
 #endif

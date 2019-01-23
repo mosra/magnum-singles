@@ -12,19 +12,28 @@ UNDER CONSTRUCTION
 ==================
 
 This repository is not yet deemed stable and the level of documentation is
-*way* below Magnum standards. Please be aware the repository will be
-force-pushed to until things stabilize.
+*way* below Magnum standards. Please be aware the repository might still get
+force-pushed-to until things stabilize.
 
 There are the following single-header libraries at the moment. This list will
 grow with more Magnum features being exposed this way.
 
-Library         | LoC | Preprocessed LoC | Description
+Library         | LoC | Pp LoC <sup>(*)</sup> | Description
 --------------- | --- | ---------------- | -------------------
-**[CorradeOptional.h](CorradeOptional.h)** | 235 | 2715 | [Containers::Optional](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Optional.html), a lightweight alternative to `std::optional`
-**[CorradePointer.h](CorradePointer.h)** | 204 | 2315 | [Containers::Pointer](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Pointer.html), a lightweight alternative to `std::unique_ptr`
-**[CorradeReference.h](CorradeReference.h)** | 70 | 1639 | [Containers::Reference](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Reference.html), a lightweight alternative to `std::reference_Wrapper`
+**[CorradeOptional.h](CorradeOptional.h)** | 253 | 2715   | [Containers::Optional](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Optional.html), a lightweight alternative to [`std::optional`](https://en.cppreference.com/w/cpp/utility/optional)
+**[CorradePointer.h](CorradePointer.h)** | 243 | 2315     | [Containers::Pointer](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Pointer.html), a lightweight alternative to [`std::unique_ptr`](https://en.cppreference.com/w/cpp/memory/unique_ptr)
+**[CorradeReference.h](CorradeReference.h)** | 109 | 1639 | [Containers::Reference](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Reference.html), a lightweight alternative to [`std::reference_wrapper`](https://en.cppreference.com/w/cpp/utility/functional/reference_wrapper)
 
-For more information read the intro article on the project blog: https://blog.magnum.graphics/backstage/lightweight-stl-compatible-unique-pointer/
+<sup>(*)</sup> — lines of code after a preprocessor run, with system includes
+expanded. Gathered using GCC 8.2 and libstdc++.
+
+For more information read the
+[single-header library docs](https://doc.magnum.graphics/corrade/corrade-singles.html)
+or the intro article on the project blog:
+https://blog.magnum.graphics/backstage/lightweight-stl-compatible-unique-pointer/
+The libraries are generated using `acme.py`, which is part of Corrade.
+[See its documentation](https://doc.magnum.graphics/corrade/acme.html), if you
+are interested.
 
 CONTACT & SUPPORT
 =================

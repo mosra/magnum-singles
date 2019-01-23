@@ -1,4 +1,22 @@
 /*
+    Corrade::Containers::Optional
+        — a lightweight alternative to std::optional
+
+    https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Optional.html
+
+    This is a single-header library generated from the Corrade project. With
+    the goal being easy integration, it's deliberately free of all comments
+    to keep the file size small. More info, changelogs and full docs here:
+
+    -   Project homepage — https://magnum.graphics/corrade/
+    -   Documentation — https://doc.magnum.graphics/corrade/
+    -   GitHub project page — https://github.com/mosra/corrade
+    -   GitHub Singles repository — https://github.com/mosra/magnum-singles
+
+    Generated from Corrade v2018.10-183-g4eb1adc0 (2019-01-23), 253 / 2715 LoC
+*/
+
+/*
     This file is part of Corrade.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
