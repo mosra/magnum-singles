@@ -6,14 +6,20 @@
 
     This is a single-header library generated from the Corrade project. With
     the goal being easy integration, it's deliberately free of all comments
-    to keep the file size small. More info, changelogs and full docs here:
+    to keep the file size small. More info, detailed changelogs and docs here:
 
     -   Project homepage — https://magnum.graphics/corrade/
     -   Documentation — https://doc.magnum.graphics/corrade/
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
-    Generated from Corrade v2018.10-183-g4eb1adc0 (2019-01-23), 243 / 2315 LoC
+    v2018.10-232-ge927d7f3 (2019-01-28)
+    -   Stricter matching for external representation conversion
+    -   Ability to convert from external representation also using pointer()
+    v2018.10-183-g4eb1adc0 (2019-01-23)
+    -   Initial release
+
+    Generated from Corrade v2018.10-232-ge927d7f3 (2019-01-28), 259 / 2321 LoC
 */
 
 /*
@@ -108,7 +114,7 @@ constexpr InPlaceInitT InPlaceInit{InPlaceInitT::Init{}};
 namespace Corrade { namespace Containers {
 
 namespace Implementation {
-    template<class> struct PointerConverter;
+    template<class, class> struct PointerConverter;
 }
 
 template<class T> class Pointer {
@@ -123,7 +129,7 @@ template<class T> class Pointer {
 
         template<class U, class = typename std::enable_if<std::is_base_of<T, U>::value>::type> /*implicit*/ Pointer(Pointer<U>&& other) noexcept: _pointer{other.release()} {}
 
-        template<class U, class = decltype(Implementation::PointerConverter<U>::from(std::declval<U&&>()))> /*implicit*/ Pointer(U&& other) noexcept: Pointer{Implementation::PointerConverter<U>::from(std::move(other))} {}
+        template<class U, class = decltype(Implementation::PointerConverter<T, U>::from(std::declval<U&&>()))> /*implicit*/ Pointer(U&& other) noexcept: Pointer{Implementation::PointerConverter<T, U>::from(std::move(other))} {}
 
         Pointer(const Pointer<T>&) = delete;
 
@@ -138,8 +144,8 @@ template<class T> class Pointer {
             return *this;
         }
 
-        template<class U, class = decltype(Implementation::PointerConverter<U>::to(std::declval<Pointer<T>&&>()))> /*implicit*/ operator U() && {
-            return Implementation::PointerConverter<U>::to(std::move(*this));
+        template<class U, class = decltype(Implementation::PointerConverter<T, U>::to(std::declval<Pointer<T>&&>()))> /*implicit*/ operator U() && {
+            return Implementation::PointerConverter<T, U>::to(std::move(*this));
         }
 
         bool operator==(std::nullptr_t) const { return !_pointer; }
@@ -203,6 +209,14 @@ template<class T> inline Pointer<T> pointer(T* pointer) {
     return Pointer<T>{pointer};
 }
 
+namespace Implementation {
+    template<class> struct DeducedPointerConverter;
+}
+
+template<class T> inline auto pointer(T&& other) -> decltype(Implementation::DeducedPointerConverter<T>::from(std::move(other))) {
+    return Implementation::DeducedPointerConverter<T>::from(std::move(other));
+}
+
 template<class U, class T> Pointer<U> pointerCast(Pointer<T>&& pointer) {
     return Pointer<U>{static_cast<U*>(pointer.release())};
 }
@@ -227,7 +241,7 @@ template<class T, class ...Args> inline Pointer<T> pointer(Args&&... args) {
 
 namespace Corrade { namespace Containers { namespace Implementation {
 
-template<class T> struct PointerConverter<std::unique_ptr<T>> {
+template<class T> struct PointerConverter<T, std::unique_ptr<T>> {
     static Pointer<T> from(std::unique_ptr<T>&& other) {
         return Pointer<T>{other.release()};
     }
@@ -236,6 +250,8 @@ template<class T> struct PointerConverter<std::unique_ptr<T>> {
         return std::unique_ptr<T>{other.release()};
     }
 };
+
+template<class T> struct DeducedPointerConverter<std::unique_ptr<T>>: PointerConverter<T, std::unique_ptr<T>> {};
 
 }}}
 

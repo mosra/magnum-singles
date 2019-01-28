@@ -6,14 +6,20 @@
 
     This is a single-header library generated from the Corrade project. With
     the goal being easy integration, it's deliberately free of all comments
-    to keep the file size small. More info, changelogs and full docs here:
+    to keep the file size small. More info, detailed changelogs and docs here:
 
     -   Project homepage — https://magnum.graphics/corrade/
     -   Documentation — https://doc.magnum.graphics/corrade/
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
-    Generated from Corrade v2018.10-183-g4eb1adc0 (2019-01-23), 253 / 2715 LoC
+    v2018.10-232-ge927d7f3 (2019-01-28)
+    -   Ability to "take" a value out of a r-value optional using operator*
+    -   Opt-in compatibility with <optional> from C++17
+    v2018.10-183-g4eb1adc0 (2019-01-23)
+    -   Initial release
+
+    Generated from Corrade v2018.10-232-ge927d7f3 (2019-01-28), 328 / 2742 LoC
 */
 
 /*
@@ -108,6 +114,10 @@ constexpr InPlaceInitT InPlaceInit{InPlaceInitT::Init{}};
 
 namespace Corrade { namespace Containers {
 
+namespace Implementation {
+    template<class, class> struct OptionalConverter;
+}
+
 struct NullOptT {
     struct Init{};
     constexpr explicit NullOptT(Init) {}
@@ -131,6 +141,10 @@ template<class T> class Optional {
             new(&_value.v) T{std::forward<Args>(args)...};
         }
 
+        template<class U, class = decltype(Implementation::OptionalConverter<T, U>::from(std::declval<const U&>()))> explicit Optional(const U& other) noexcept(std::is_nothrow_copy_constructible<T>::value): Optional{Implementation::OptionalConverter<T, U>::from(other)} {}
+
+        template<class U, class = decltype(Implementation::OptionalConverter<T, U>::from(std::declval<U&&>()))> explicit Optional(U&& other) noexcept(std::is_nothrow_move_constructible<T>::value): Optional{Implementation::OptionalConverter<T, U>::from(std::move(other))} {}
+
         Optional(const Optional<T>& other) noexcept(std::is_nothrow_copy_constructible<T>::value);
 
         Optional(Optional<T>&& other) noexcept(std::is_nothrow_move_constructible<T>::value);
@@ -138,6 +152,14 @@ template<class T> class Optional {
         Optional<T>& operator=(const Optional<T>& other) noexcept(std::is_nothrow_copy_assignable<T>::value);
 
         Optional<T>& operator=(Optional<T>&& other) noexcept(std::is_nothrow_move_assignable<T>::value);
+
+        template<class U, class = decltype(Implementation::OptionalConverter<T, U>::to(std::declval<const Optional<T>&>()))> explicit operator U() const & {
+            return Implementation::OptionalConverter<T, U>::to(*this);
+        }
+
+        template<class U, class = decltype(Implementation::OptionalConverter<T, U>::to(std::declval<Optional<T>&&>()))> explicit operator U() && {
+            return Implementation::OptionalConverter<T, U>::to(std::move(*this));
+        }
 
         Optional<T>& operator=(NullOptT) noexcept;
 
@@ -171,15 +193,27 @@ template<class T> class Optional {
             return &_value.v;
         }
 
-        T& operator*() {
+        T& operator*() & {
             CORRADE_ASSERT(_set, "Containers::Optional: the optional is empty", _value.v);
             return _value.v;
         }
 
-        const T& operator*() const {
+        T&& operator*() && {
+            CORRADE_ASSERT(_set, "Containers::Optional: the optional is empty", std::move(_value.v));
+            return std::move(_value.v);
+        }
+
+        const T& operator*() const & {
             CORRADE_ASSERT(_set, "Containers::Optional: the optional is empty", _value.v);
             return _value.v;
         }
+
+        #if !defined(__GNUC__) || defined(__clang__) || __GNUC__ > 4
+        const T&& operator*() const && {
+            CORRADE_ASSERT(_set, "Containers::Optional: the optional is empty", std::move(_value.v));
+            return std::move(_value.v);
+        }
+        #endif
 
         template<class ...Args> T& emplace(Args&&... args);
 
@@ -202,12 +236,22 @@ template<class T> bool operator==(const T& a, const Optional<T>& b) { return b =
 
 template<class T> bool operator!=(const T& a, const Optional<T>& b) { return b != a; }
 
-template<class T> inline Optional<typename std::decay<T>::type> optional(T&& value) {
+namespace Implementation {
+    template<class T> struct DeducedOptionalConverter { typedef T Type; };
+}
+
+template<class T> inline
+Optional<typename Implementation::DeducedOptionalConverter<typename std::decay<T>::type>::Type>
+optional(T&& value) {
     return Optional<typename std::decay<T>::type>{std::forward<T>(value)};
 }
 
 template<class T, class ...Args> inline Optional<T> optional(Args&&... args) {
     return Optional<T>{InPlaceInit, std::forward<Args>(args)...};
+}
+
+template<class T> inline auto optional(T&& other) -> decltype(Implementation::DeducedOptionalConverter<typename std::decay<T>::type>::from(std::forward<T>(other))) {
+    return Implementation::DeducedOptionalConverter<typename std::decay<T>::type>::from(std::forward<T>(other));
 }
 
 template<class T> Optional<T>::Optional(const Optional<T>& other) noexcept(std::is_nothrow_copy_constructible<T>::value): _set(other._set) {
@@ -250,4 +294,35 @@ template<class T> template<class ...Args> T& Optional<T>::emplace(Args&&... args
 
 }}
 
+#endif
+#ifdef CORRADE_OPTIONAL_STL_COMPATIBILITY
+#include <optional>
+#ifndef Corrade_Containers_OptionalStl_h
+#define Corrade_Containers_OptionalStl_h
+
+namespace Corrade { namespace Containers { namespace Implementation {
+
+template<class T> struct OptionalConverter<T, std::optional<T>> {
+    static Optional<T> from(const std::optional<T>& other) {
+        return other ? Optional<T>{*other} : Containers::NullOpt;
+    }
+
+    static Optional<T> from(std::optional<T>&& other) {
+        return other ? Optional<T>{*std::move(other)} : Containers::NullOpt;
+    }
+
+    static std::optional<T> to(const Optional<T>& other) {
+        return other ? std::optional<T>{*other} : std::nullopt;
+    }
+
+    static std::optional<T> to(Optional<T>&& other) {
+        return other ? std::optional<T>{*std::move(other)} : std::nullopt;
+    }
+};
+
+template<class T> struct DeducedOptionalConverter<std::optional<T>>: OptionalConverter<T, std::optional<T>> {};
+
+}}}
+
+#endif
 #endif
