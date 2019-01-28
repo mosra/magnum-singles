@@ -37,3 +37,4 @@ script:
 - $COMPILE CorradeOptional.cpp && ./a.out
 - $COMPILE CorradePointer.cpp && ./a.out
 - $COMPILE CorradeReference.cpp && ./a.out
+- $COMPILE CorradeScopeGuard.cpp && ./a.out
