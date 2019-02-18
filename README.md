@@ -49,6 +49,7 @@ using `acme.py`, which is part of Corrade.
 are interested. Particular libraries are introduced on the Magnum blog:
 
 -   [Lightweight but still STL-compatible unique pointer](https://blog.magnum.graphics/backstage/lightweight-stl-compatible-unique-pointer/)
+-   [Array view implementations in Magnum](https://blog.magnum.graphics/backstage/array-view-implementations/)
 
 What about test coverage?
 -------------------------
