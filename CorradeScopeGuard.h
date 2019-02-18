@@ -13,10 +13,12 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    v2019.01-41-g39c08d7c (2019-02-18)
+    -   Ability to create a handle-less ScopeGuard
     v2018.10-232-ge927d7f3 (2019-01-28)
     -   Initial release
 
-    Generated from Corrade v2018.10-232-ge927d7f3 (2019-01-28), 108 / 26 LoC
+    Generated from Corrade v2019.01-41-g39c08d7c (2019-02-18), 131 / 34 LoC
 */
 
 /*
@@ -57,8 +59,11 @@ class ScopeGuard {
     public:
         template<class T, class Deleter> explicit ScopeGuard(T handle, Deleter deleter);
 
+        template<class Deleter> explicit ScopeGuard(Deleter deleter);
+
         #ifdef CORRADE_MSVC2015_COMPATIBILITY
         template<class T, class U> explicit ScopeGuard(T handle, U(*deleter)(T));
+        template<class U> explicit ScopeGuard(U(*deleter)());
         #endif
 
         ScopeGuard(const ScopeGuard&) = delete;
@@ -94,11 +99,29 @@ template<class T, class Deleter> ScopeGuard::ScopeGuard(T handle, Deleter delete
     };
 }
 
+template<class Deleter> ScopeGuard::ScopeGuard(Deleter deleter): _deleter{
+    #ifndef CORRADE_MSVC2015_COMPATIBILITY
+    reinterpret_cast<void(*)()>(+deleter)
+    #else
+    reinterpret_cast<void(*)()>(static_cast<void(*)()>(deleter))
+    #endif
+}, _handle{nullptr} {
+    _deleterWrapper = [](void(**deleter)(), void**) {
+        (*reinterpret_cast<Deleter*>(deleter))();
+    };
+}
+
 #ifdef CORRADE_MSVC2015_COMPATIBILITY
 template<class T, class U> ScopeGuard::ScopeGuard(T handle, U(*deleter)(T)): _deleter{reinterpret_cast<void(*)()>(deleter)}, _handle{reinterpret_cast<void*>(handle)} {
     static_assert(sizeof(T) <= sizeof(void*), "handle too big to store");
     _deleterWrapper = [](void(**deleter)(), void** handle) {
         (*reinterpret_cast<U(**)(T)>(deleter))(*reinterpret_cast<T*>(handle));
+    };
+}
+
+template<class U> ScopeGuard::ScopeGuard(U(*deleter)()): _deleter{reinterpret_cast<void(*)()>(deleter)}, _handle{nullptr} {
+    _deleterWrapper = [](void(**deleter)(), void**) {
+        (*reinterpret_cast<U(**)()>(deleter))();
     };
 }
 #endif

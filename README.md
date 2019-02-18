@@ -19,7 +19,7 @@ Library         | LoC | PpLoC<sup>(*)</sup>     | Description
 **[CorradeOptional.h](CorradeOptional.h)** | 328 | 2742   | [Containers::Optional](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Optional.html), a lightweight alternative to [`std::optional`](https://en.cppreference.com/w/cpp/utility/optional)
 **[CorradePointer.h](CorradePointer.h)** | 259 | 2321     | [Containers::Pointer](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Pointer.html), a lightweight alternative to [`std::unique_ptr`](https://en.cppreference.com/w/cpp/memory/unique_ptr)
 **[CorradeReference.h](CorradeReference.h)** | 115 | 1639 | [Containers::Reference](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Reference.html), a lightweight alternative to [`std::reference_wrapper`](https://en.cppreference.com/w/cpp/utility/functional/reference_wrapper)
-**[CorradeScopeGuard.h](CorradeScopeGuard.h)** | 108 | 26 | [Containers::ScopeGuard](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1ScopeGuard.html), a lightweight alternative to [`std::unique_ptr`](https://en.cppreference.com/w/cpp/memory/unique_ptr) with a custom deleter
+**[CorradeScopeGuard.h](CorradeScopeGuard.h)** | 131 | 34 | [Containers::ScopeGuard](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1ScopeGuard.html), a lightweight alternative to [`std::unique_ptr`](https://en.cppreference.com/w/cpp/memory/unique_ptr) with a custom deleter
 
 <sup>(*)</sup> — lines of code after a preprocessor run, with system includes
 expanded. Gathered using GCC 8.2 and libstdc++.
