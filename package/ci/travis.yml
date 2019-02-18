@@ -35,6 +35,7 @@ script:
 - echo "int main() {}" | $COMPILE -x c++ - && ./a.out
 
 - $COMPILE CorradeArrayView.cpp && ./a.out
+- $COMPILE CorradeArray.cpp && ./a.out
 - $COMPILE CorradeOptional.cpp && ./a.out
 - $COMPILE CorradePointer.cpp && ./a.out
 - $COMPILE CorradeReference.cpp && ./a.out
