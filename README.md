@@ -16,6 +16,7 @@ grow with more Magnum features being exposed this way.
 
 Library         | LoC | PpLoC<sup>(*)</sup>     | Description
 --------------- | --- | ----------------------- | -------------------
+**[CorradeArrayView.h](CorradeArrayView.h)** | 558 | 2453   | [Containers::ArrayView](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1ArrayView.html) and [Containers::StaticArrayView](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1StaticArrayView.html), lightweight alternatives to [`std::span`](https://en.cppreference.com/w/cpp/container/span)
 **[CorradeOptional.h](CorradeOptional.h)** | 328 | 2742   | [Containers::Optional](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Optional.html), a lightweight alternative to [`std::optional`](https://en.cppreference.com/w/cpp/utility/optional)
 **[CorradePointer.h](CorradePointer.h)** | 259 | 2321     | [Containers::Pointer](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Pointer.html), a lightweight alternative to [`std::unique_ptr`](https://en.cppreference.com/w/cpp/memory/unique_ptr)
 **[CorradeReference.h](CorradeReference.h)** | 115 | 1639 | [Containers::Reference](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Reference.html), a lightweight alternative to [`std::reference_wrapper`](https://en.cppreference.com/w/cpp/utility/functional/reference_wrapper)
