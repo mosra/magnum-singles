@@ -40,3 +40,4 @@ script:
 - $COMPILE CorradePointer.cpp && ./a.out
 - $COMPILE CorradeReference.cpp && ./a.out
 - $COMPILE CorradeScopeGuard.cpp && ./a.out
+- $COMPILE CorradeTestSuite.cpp && ./a.out
