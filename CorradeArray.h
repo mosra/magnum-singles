@@ -17,10 +17,12 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    v2019.01-107-g80d9f347 (2019-03-23)
+    -   Added missing <initializer_list> include
     v2019.01-47-g524c127e (2019-02-18)
     -   Initial release
 
-    Generated from Corrade v2019.01-47-g524c127e (2019-02-18), 595 / 3219 LoC
+    Generated from Corrade v2019.01-107-g80d9f347 (2019-03-23), 598 / 3225 LoC
 */
 
 /*
@@ -48,6 +50,7 @@
     DEALINGS IN THE SOFTWARE.
 */
 
+#include <initializer_list>
 #include <new>
 #include <type_traits>
 #include <utility>
