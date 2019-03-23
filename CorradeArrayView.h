@@ -15,10 +15,12 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    v2019.01-107-g80d9f347 (2019-03-23)
+    -   Including <cassert> only when needed
     v2019.01-41-g39c08d7c (2019-02-18)
     -   Initial release
 
-    Generated from Corrade v2019.01-41-g39c08d7c (2019-02-18), 558 / 2453 LoC
+    Generated from Corrade v2019.01-107-g80d9f347 (2019-03-23), 563 / 2459 LoC
 */
 
 /*
@@ -46,10 +48,12 @@
     DEALINGS IN THE SOFTWARE.
 */
 
-#include <cassert>
 #include <cstddef>
 #include <type_traits>
 #include <utility>
+#if (!defined(CORRADE_ASSERT) || !defined(CORRADE_CONSTEXPR_ASSERT)) && !defined(NDEBUG)
+#include <cassert>
+#endif
 
 #if defined(_MSC_VER) && _MSC_VER <= 1920
 #define CORRADE_MSVC2017_COMPATIBILITY
@@ -64,6 +68,7 @@ template<class> class ArrayView;
 template<std::size_t, class> class StaticArrayView;
 
 }}
+
 #endif
 #ifndef CORRADE_ASSERT
 #ifdef NDEBUG
