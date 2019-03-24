@@ -1,3 +1,3 @@
-for i in $(ls *.h); do
+for i in $(ls *.h *.hpp); do
     echo "**[$i]($i)** |" $(cat $i | wc -l) '|' $(echo "#include \"$i\"" | g++ -std=c++11 -P -E -x c++ - | wc -l)
 done
