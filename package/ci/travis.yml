@@ -40,3 +40,7 @@ script:
 - $COMPILE CorradePointer.cpp && ./a.out
 - $COMPILE CorradeReference.cpp && ./a.out
 - $COMPILE CorradeScopeGuard.cpp && ./a.out
+- $COMPILE CorradeStlForwardArray.cpp && ./a.out
+- $COMPILE CorradeStlForwardString.cpp && ./a.out
+- $COMPILE CorradeStlForwardTuple.cpp && ./a.out
+- $COMPILE CorradeStlForwardVector.cpp && ./a.out

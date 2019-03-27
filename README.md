@@ -14,19 +14,26 @@ LIBRARIES
 There are the following single-header libraries at the moment. This list will
 grow with more Magnum features being exposed this way.
 
-Library         | LoC | PpLoC<sup>(*)</sup>     | Description
+Library         | LoC | PpLoC<sup>[1]</sup>     | Description
 --------------- | --- | ----------------------- | -------------------
 **[CorradeArrayView.h](CorradeArrayView.h)** | 563 | 2459 | [Containers::ArrayView](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1ArrayView.html) and [Containers::StaticArrayView](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1StaticArrayView.html), lightweight alternatives to [`std::span`](https://en.cppreference.com/w/cpp/container/span)
-**[CorradeArray.h](CorradeArray.h)** | 598<sup>(**)</sup> | 3225 | [Containers::Array](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Array.html) and [Containers::StaticArray](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1StaticArray.html), lightweight alternatives to [`std::vector`](https://en.cppreference.com/w/cpp/container/vector) and [`std::array`](https://en.cppreference.com/w/cpp/container/span). Depends on `CorradeArrayView.h`.
+**[CorradeArray.h](CorradeArray.h)** | 598<sup>[2]</sup> | 3225 | [Containers::Array](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Array.html) and [Containers::StaticArray](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1StaticArray.html), lightweight alternatives to [`std::vector`](https://en.cppreference.com/w/cpp/container/vector) and [`std::array`](https://en.cppreference.com/w/cpp/container/span). Depends on `CorradeArrayView.h`.
 **[CorradeOptional.h](CorradeOptional.h)** | 332 | 2748   | [Containers::Optional](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Optional.html), a lightweight alternative to [`std::optional`](https://en.cppreference.com/w/cpp/utility/optional)
 **[CorradePointer.h](CorradePointer.h)** | 263 | 2327     | [Containers::Pointer](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Pointer.html), a lightweight alternative to [`std::unique_ptr`](https://en.cppreference.com/w/cpp/memory/unique_ptr)
 **[CorradeReference.h](CorradeReference.h)** | 115 | 1641 | [Containers::Reference](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Reference.html), a lightweight alternative to [`std::reference_wrapper`](https://en.cppreference.com/w/cpp/utility/functional/reference_wrapper)
 **[CorradeScopeGuard.h](CorradeScopeGuard.h)** | 131 | 34 | [Containers::ScopeGuard](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1ScopeGuard.html), a lightweight alternative to [`std::unique_ptr`](https://en.cppreference.com/w/cpp/memory/unique_ptr) with a custom deleter
+**[CorradeStlForwardArray.h](CorradeStlForwardArray.h)** | 67 | 2455<sup>[3]</sup> | [Corrade's forward declaration for `std::array`](https://doc.magnum.graphics/corrade/StlForwardArray_8h.html), a lightweight alternative to the full [`<array>`](https://en.cppreference.com/w/cpp/header/array) (15k PpLOC<sup>[1]</sup>) where supported
+**[CorradeStlForwardString.h](CorradeStlForwardString.h)** | 74 | 48 | [Corrade's forward declaration for `std::string`](https://doc.magnum.graphics/corrade/StlForwardString.html), a lightweight alternative to the full [`<string>`](https://en.cppreference.com/w/cpp/header/string) (11k PpLOC<sup>[1]</sup>) where supported
+**[CorradeStlForwardTuple.h](CorradeStlForwardTuple.h)** | 78 | 1616 | [Corrade's forward declaration for `std::tuple`](https://doc.magnum.graphics/corrade/StlForwardTuple.html), a lightweight alternative to the full [`<tuple>`](https://en.cppreference.com/w/cpp/header/tuple) (13k PpLOC<sup>[1]</sup>) where supported
+**[CorradeStlForwardVector.h](CorradeStlForwardVector.h)** | 62 | 741<sup>[3]</sup> | [Corrade's forward declaration for `std::vector`](https://doc.magnum.graphics/corrade/StlForwardVector.html), a lightweight alternative to the full [`<vector>`](https://en.cppreference.com/w/cpp/header/tuple) (9k PpLOC<sup>[1]</sup>) where supported
 
-<sup>(*)</sup> — lines of code after a preprocessor run, with system includes
-expanded. Gathered using GCC 8.2 and libstdc++.
+<sup>[1]</sup> — lines of code after a preprocessor run, with system includes
+expanded. Gathered using GCC 8.2 and libstdc++, unless said otherwise.
 
-<sup>(**)</sup> — not a total size due to inter-library dependencies
+<sup>[2]</sup> — not a total size due to inter-library dependencies
+
+<sup>[3]</sup> — gathered using Clang 7.0 and libc++, since libstdc++ doesn't
+have a forward declaration for `std:array` / `std::vector`
 
 Where is the documentation?
 ---------------------------
