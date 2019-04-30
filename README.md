@@ -17,6 +17,7 @@ grow with more Magnum features being exposed this way.
 Library         | LoC | PpLoC<sup>[1]</sup>     | Description
 --------------- | --- | ----------------------- | -------------------
 **[CorradeArrayView.h](CorradeArrayView.h)** | 610 | 2484 | [Containers::ArrayView](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1ArrayView.html) and [Containers::StaticArrayView](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1StaticArrayView.html), lightweight alternatives to [`std::span`](https://en.cppreference.com/w/cpp/container/span)
+**[CorradeStridedArrayView.h](CorradeStridedArrayView.h)** | 594<sup>[2]</sup> | 2866 | [Containers::StridedArrayView](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1StridedArrayView.html), multi-dimensional strided array view. Depends on `CorradeArrayView.h`.
 **[CorradeArray.h](CorradeArray.h)** | 627<sup>[2]</sup> | 3278 | [Containers::Array](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Array.html) and [Containers::StaticArray](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1StaticArray.html), lightweight alternatives to [`std::vector`](https://en.cppreference.com/w/cpp/container/vector) and [`std::array`](https://en.cppreference.com/w/cpp/container/span). Depends on `CorradeArrayView.h`.
 **[CorradeOptional.h](CorradeOptional.h)** | 332 | 2748   | [Containers::Optional](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Optional.html), a lightweight alternative to [`std::optional`](https://en.cppreference.com/w/cpp/utility/optional)
 **[CorradePointer.h](CorradePointer.h)** | 263 | 2327     | [Containers::Pointer](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Pointer.html), a lightweight alternative to [`std::unique_ptr`](https://en.cppreference.com/w/cpp/memory/unique_ptr)
@@ -65,6 +66,8 @@ are interested. Particular libraries are introduced on the Magnum blog:
     (Feb 18, 2019)
 -   [Forward-declaring STL container types](https://blog.magnum.graphics/backstage/forward-declaring-stl-container-types/)
     (Mar 28, 2019)
+-   [Multi-dimensional strided array views in Magnum](https://blog.magnum.graphics/backstage/multidimensional-strided-array-views/)
+    (Apr 30, 2019)
 
 What about test coverage?
 -------------------------
