@@ -15,12 +15,15 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    v2019.01-173-ge663b49c (2019-04-30)
+    -   Added ArrayView<void> as a counterpart to ArrayView<const void>
+    -   Added compile-time-sized StaticArrayView::suffix()
     v2019.01-107-g80d9f347 (2019-03-23)
     -   Including <cassert> only when needed
     v2019.01-41-g39c08d7c (2019-02-18)
     -   Initial release
 
-    Generated from Corrade v2019.01-107-g80d9f347 (2019-03-23), 563 / 2459 LoC
+    Generated from Corrade v2019.01-173-ge663b49c (2019-04-30), 610 / 2484 LoC
 */
 
 /*
@@ -184,6 +187,43 @@ template<class T> class ArrayView {
         std::size_t _size;
 };
 
+template<> class ArrayView<void> {
+    public:
+        typedef void Type;
+
+        constexpr /*implicit*/ ArrayView(std::nullptr_t) noexcept: _data(nullptr), _size(0) {}
+
+        constexpr /*implicit*/ ArrayView() noexcept: _data(nullptr), _size(0) {}
+
+        constexpr /*implicit*/ ArrayView(void* data, std::size_t size) noexcept: _data(data), _size(size) {}
+
+        template<class T> constexpr /*implicit*/ ArrayView(T* data, std::size_t size) noexcept: _data(data), _size(size*sizeof(T)) {}
+
+        template<class T, std::size_t size> constexpr /*implicit*/ ArrayView(T(&data)[size]) noexcept: _data(data), _size(size*sizeof(T)) {}
+
+        template<class T> constexpr /*implicit*/ ArrayView(ArrayView<T> array) noexcept: _data(array), _size(array.size()*sizeof(T)) {}
+
+        template<std::size_t size, class T> constexpr /*implicit*/ ArrayView(const StaticArrayView<size, T>& array) noexcept: _data{array}, _size{size*sizeof(T)} {}
+
+        template<class T, class = decltype(Implementation::ErasedArrayViewConverter<typename std::decay<T&&>::type>::from(std::declval<T&&>()))> constexpr /*implicit*/ ArrayView(T&& other) noexcept: ArrayView{Implementation::ErasedArrayViewConverter<typename std::decay<T&&>::type>::from(other)} {}
+
+        #ifndef CORRADE_MSVC2017_COMPATIBILITY
+        constexpr explicit operator bool() const { return _data; }
+        #endif
+
+        constexpr /*implicit*/ operator void*() const { return _data; }
+
+        constexpr void* data() const { return _data; }
+
+        constexpr std::size_t size() const { return _size; }
+
+        constexpr bool empty() const { return !_size; }
+
+    private:
+        void* _data;
+        std::size_t _size;
+};
+
 template<> class ArrayView<const void> {
     public:
         typedef const void Type;
@@ -198,7 +238,7 @@ template<> class ArrayView<const void> {
 
         template<class T, std::size_t size> constexpr /*implicit*/ ArrayView(T(&data)[size]) noexcept: _data(data), _size(size*sizeof(T)) {}
 
-        template<class T> constexpr /*implicit*/ ArrayView(const ArrayView<T>& array) noexcept: _data(array), _size(array.size()*sizeof(T)) {}
+        template<class T> constexpr /*implicit*/ ArrayView(ArrayView<T> array) noexcept: _data(array), _size(array.size()*sizeof(T)) {}
 
         template<std::size_t size, class T> constexpr /*implicit*/ ArrayView(const StaticArrayView<size, T>& array) noexcept: _data{array}, _size{size*sizeof(T)} {}
 
@@ -339,7 +379,7 @@ template<std::size_t size_, class T> class StaticArrayView {
             return ArrayView<T>(*this).prefix(end);
         }
 
-        template<std::size_t viewSize> constexpr StaticArrayView<viewSize, T> prefix() const;
+        template<std::size_t end_> constexpr StaticArrayView<end_, T> prefix() const;
 
         constexpr ArrayView<T> suffix(T* begin) const {
             return ArrayView<T>(*this).suffix(begin);
@@ -347,6 +387,8 @@ template<std::size_t size_, class T> class StaticArrayView {
         constexpr ArrayView<T> suffix(std::size_t begin) const {
             return ArrayView<T>(*this).suffix(begin);
         }
+
+        template<std::size_t begin_> constexpr StaticArrayView<size_ - begin_, T> suffix() const;
 
     private:
         T* _data;
@@ -445,9 +487,14 @@ template<class T> template<std::size_t viewSize> constexpr StaticArrayView<viewS
         StaticArrayView<viewSize, T>{_data + begin};
 }
 
-template<std::size_t size_, class T> template<std::size_t viewSize> constexpr StaticArrayView<viewSize, T> StaticArrayView<size_, T>::prefix() const {
-    static_assert(viewSize <= size_, "prefix size too large");
-    return StaticArrayView<viewSize, T>{_data};
+template<std::size_t size_, class T> template<std::size_t end_> constexpr StaticArrayView<end_, T> StaticArrayView<size_, T>::prefix() const {
+    static_assert(end_ <= size_, "prefix size too large");
+    return StaticArrayView<end_, T>{_data};
+}
+
+template<std::size_t size_, class T> template<std::size_t begin_> constexpr StaticArrayView<size_ - begin_, T> StaticArrayView<size_, T>::suffix() const {
+    static_assert(begin_ <= size_, "suffix size too large");
+    return StaticArrayView<size_ - begin_, T>{_data + begin_};
 }
 
 }}

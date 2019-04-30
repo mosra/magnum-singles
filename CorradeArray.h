@@ -17,12 +17,14 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    v2019.01-173-ge663b49c (2019-04-30)
+    -   Different implementation for Array-to-view conversion
     v2019.01-107-g80d9f347 (2019-03-23)
     -   Added missing <initializer_list> include
     v2019.01-47-g524c127e (2019-02-18)
     -   Initial release
 
-    Generated from Corrade v2019.01-107-g80d9f347 (2019-03-23), 598 / 3225 LoC
+    Generated from Corrade v2019.01-173-ge663b49c (2019-04-30), 627 / 3278 LoC
 */
 
 /*
@@ -195,22 +197,6 @@ class Array {
         explicit operator bool() const { return _data; }
         #endif
 
-        template<class U, class = typename std::enable_if<!std::is_void<U>::value && std::is_convertible<T*, U*>::value>::type>
-        /*implicit*/ operator ArrayView<U>() noexcept {
-            static_assert(sizeof(T) == sizeof(U), "type sizes are not compatible");
-            return {_data, _size};
-        }
-
-        template<class U, class = typename std::enable_if<std::is_convertible<T*, U*>::value || std::is_convertible<T*, const U*>::value>::type>
-        /*implicit*/ operator ArrayView<const U>() const noexcept {
-            static_assert(sizeof(T) == sizeof(U), "type sizes are not compatible");
-            return {_data, _size};
-        }
-
-        /*implicit*/ operator ArrayView<const void>() const noexcept {
-            return {_data, _size};
-        }
-
         /*implicit*/ operator T*() & { return _data; }
 
         /*implicit*/ operator const T*() const & { return _data; }
@@ -373,6 +359,31 @@ template<class T, class D> inline T* Array<T, D>::release() {
     return data;
 }
 
+namespace Implementation {
+
+template<class U, class T, class D> struct ArrayViewConverter<U, Array<T, D>> {
+    template<class V = U> constexpr static typename std::enable_if<std::is_convertible<T*, V*>::value, ArrayView<U>>::type from(Array<T, D>& other) {
+        static_assert(sizeof(T) == sizeof(U), "types are not compatible");
+        return {&other[0], other.size()};
+    }
+};
+template<class U, class T, class D> struct ArrayViewConverter<const U, Array<T, D>> {
+    template<class V = U> constexpr static typename std::enable_if<std::is_convertible<T*, V*>::value, ArrayView<const U>>::type from(const Array<T, D>& other) {
+        static_assert(sizeof(T) == sizeof(U), "types are not compatible");
+        return {&other[0], other.size()};
+    }
+};
+template<class U, class T, class D> struct ArrayViewConverter<const U, Array<const T, D>> {
+    template<class V = U> constexpr static typename std::enable_if<std::is_convertible<T*, V*>::value, ArrayView<const U>>::type from(const Array<const T, D>& other) {
+        static_assert(sizeof(T) == sizeof(U), "types are not compatible");
+        return {&other[0], other.size()};
+    }
+};
+template<class T, class D> struct ErasedArrayViewConverter<Array<T, D>>: ArrayViewConverter<T, Array<T, D>> {};
+template<class T, class D> struct ErasedArrayViewConverter<const Array<T, D>>: ArrayViewConverter<const T, Array<T, D>> {};
+
+}
+
 }}
 
 #endif
@@ -413,34 +424,6 @@ template<std::size_t size_, class T> class StaticArray {
         StaticArray<size_, T>& operator=(const StaticArray<size_, T>&) = delete;
 
         StaticArray<size_, T>& operator=(StaticArray<size_, T>&&) = delete;
-
-        template<class U, class V = typename std::enable_if<!std::is_void<U>::value && std::is_convertible<T*, U*>::value>::type>
-        /*implicit*/ operator ArrayView<U>() noexcept {
-            static_assert(sizeof(T) == sizeof(U), "type sizes are not compatible");
-            return {_data, size_};
-        }
-
-        template<class U, class V = typename std::enable_if<std::is_convertible<T*, U*>::value || std::is_convertible<T*, const U*>::value>::type>
-        /*implicit*/ operator ArrayView<const U>() const noexcept {
-            static_assert(sizeof(T) == sizeof(U), "type sizes are not compatible");
-            return {_data, size_};
-        }
-
-        /*implicit*/ operator ArrayView<const void>() const noexcept {
-            return {_data, size_};
-        }
-
-        template<class U, class V = typename std::enable_if<std::is_convertible<T*, U*>::value>::type>
-        /*implicit*/ operator StaticArrayView<size_, U>() noexcept {
-            static_assert(sizeof(T) == sizeof(U), "type sizes are not compatible");
-            return StaticArrayView<size_, U>{_data};
-        }
-
-        template<class U, class V = typename std::enable_if<std::is_convertible<T*, U*>::value || std::is_convertible<T*, const U*>::value>::type>
-        /*implicit*/ operator StaticArrayView<size_, const U>() const noexcept {
-            static_assert(sizeof(T) == sizeof(U), "type sizes are not compatible");
-            return StaticArrayView<size_, const U>{_data};
-        }
 
         template<class U, class = decltype(Implementation::StaticArrayViewConverter<size_, T, U>::to(std::declval<StaticArrayView<size_, T>>()))> /*implicit*/ operator U() {
             return Implementation::StaticArrayViewConverter<size_, T, U>::to(*this);
@@ -591,6 +574,52 @@ template<std::size_t size_, class T> template<std::size_t viewSize> StaticArrayV
 template<std::size_t size_, class T> template<std::size_t viewSize> StaticArrayView<viewSize, const T> StaticArray<size_, T>::prefix() const {
     static_assert(viewSize <= size_, "prefix size too large");
     return StaticArrayView<viewSize, const T>{_data};
+}
+
+namespace Implementation {
+
+template<class U, std::size_t size, class T> struct ArrayViewConverter<U, StaticArray<size, T>> {
+    template<class V = U> constexpr static typename std::enable_if<std::is_convertible<T*, V*>::value, ArrayView<U>>::type from(StaticArray<size, T>& other) {
+        static_assert(sizeof(T) == sizeof(U), "types are not compatible");
+        return {&other[0], other.size()};
+    }
+};
+template<class U, std::size_t size, class T> struct ArrayViewConverter<const U, StaticArray<size, T>> {
+    template<class V = U> constexpr static typename std::enable_if<std::is_convertible<T*, V*>::value, ArrayView<const U>>::type from(const StaticArray<size, T>& other) {
+        static_assert(sizeof(T) == sizeof(U), "types are not compatible");
+        return {&other[0], other.size()};
+    }
+};
+template<class U, std::size_t size, class T> struct ArrayViewConverter<const U, StaticArray<size, const T>> {
+    template<class V = U> constexpr static typename std::enable_if<std::is_convertible<T*, V*>::value, ArrayView<const U>>::type from(const StaticArray<size, const T>& other) {
+        static_assert(sizeof(T) == sizeof(U), "types are not compatible");
+        return {&other[0], other.size()};
+    }
+};
+template<std::size_t size, class T> struct ErasedArrayViewConverter<StaticArray<size, T>>: ArrayViewConverter<T, StaticArray<size, T>> {};
+template<std::size_t size, class T> struct ErasedArrayViewConverter<const StaticArray<size, T>>: ArrayViewConverter<const T, StaticArray<size, T>> {};
+
+template<class U, std::size_t size, class T> struct StaticArrayViewConverter<size, U, StaticArray<size, T>> {
+    template<class V = U> constexpr static typename std::enable_if<std::is_convertible<T*, V*>::value, StaticArrayView<size, U>>::type from(StaticArray<size, T>& other) {
+        static_assert(sizeof(T) == sizeof(U), "types are not compatible");
+        return StaticArrayView<size, T>{&other[0]};
+    }
+};
+template<class U, std::size_t size, class T> struct StaticArrayViewConverter<size, const U, StaticArray<size, T>> {
+    template<class V = U> constexpr static typename std::enable_if<std::is_convertible<T*, V*>::value, StaticArrayView<size, const U>>::type from(const StaticArray<size, T>& other) {
+        static_assert(sizeof(T) == sizeof(U), "types are not compatible");
+        return StaticArrayView<size, const T>(&other[0]);
+    }
+};
+template<class U, std::size_t size, class T> struct StaticArrayViewConverter<size, const U, StaticArray<size, const T>> {
+    template<class V = U> constexpr static typename std::enable_if<std::is_convertible<T*, V*>::value, StaticArrayView<size, const U>>::type from(const StaticArray<size, const T>& other) {
+        static_assert(sizeof(T) == sizeof(U), "types are not compatible");
+        return StaticArrayView<size, const T>(&other[0]);
+    }
+};
+template<std::size_t size, class T> struct ErasedStaticArrayViewConverter<StaticArray<size, T>>: StaticArrayViewConverter<size, T, StaticArray<size, T>> {};
+template<std::size_t size, class T> struct ErasedStaticArrayViewConverter<const StaticArray<size, T>>: StaticArrayViewConverter<size, const T, StaticArray<size, T>> {};
+
 }
 
 }}
