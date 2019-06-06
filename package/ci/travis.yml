@@ -45,4 +45,5 @@ script:
 - $COMPILE CorradeStlForwardString.cpp && ./a.out
 - $COMPILE CorradeStlForwardTuple.cpp && ./a.out
 - $COMPILE CorradeStlForwardVector.cpp && ./a.out
+- $COMPILE CorradeStlMath.cpp && ./a.out
 - $COMPILE MagnumMath.cpp && ./a.out

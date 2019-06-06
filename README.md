@@ -27,6 +27,7 @@ Library         | LoC | PpLoC<sup>[1]</sup>     | Description
 **[CorradeStlForwardString.h](CorradeStlForwardString.h)** | 74 | 48 | [Corrade's forward declaration for `std::string`](https://doc.magnum.graphics/corrade/StlForwardString_8h.html), a lightweight alternative to the full [`<string>`](https://en.cppreference.com/w/cpp/header/string) (11k PpLOC<sup>[1]</sup>) where supported
 **[CorradeStlForwardTuple.h](CorradeStlForwardTuple.h)** | 78 | 1616 | [Corrade's forward declaration for `std::tuple`](https://doc.magnum.graphics/corrade/StlForwardTuple_8h.html), a lightweight alternative to the full [`<tuple>`](https://en.cppreference.com/w/cpp/header/tuple) (13k PpLOC<sup>[1]</sup>) where supported
 **[CorradeStlForwardVector.h](CorradeStlForwardVector.h)** | 62 | 741<sup>[3]</sup> | [Corrade's forward declaration for `std::vector`](https://doc.magnum.graphics/corrade/StlForwardVector_8h.html), a lightweight alternative to the full [`<vector>`](https://en.cppreference.com/w/cpp/header/tuple) (9k PpLOC<sup>[1]</sup>) where supported
+**[CorradeStlMath.h](CorradeStlMath.h)** | 57 | 2967<sup>[4]</sup> | [Corrade's optimized `<cmath>`](https://doc.magnum.graphics/corrade/StlMath_8h.html), without the heavy C++17 additions (which is otherwise 11k PpLOC<sup>[4]</sup>)
 **[MagnumMath.hpp](MagnumMath.hpp)** | 7055 | 9427        | [Math](https://doc.magnum.graphics/magnum/namespaceMagnum_1_1Math.html) namespace, a full-featured graphics-oriented linear algebra library
 
 <sup>[1]</sup> — lines of code after a preprocessor run, with system includes
@@ -36,6 +37,8 @@ expanded. Gathered using GCC 8.2 and libstdc++, unless said otherwise.
 
 <sup>[3]</sup> — gathered using Clang 7.0 and libc++, since libstdc++ doesn't
 have a forward declaration for `std:array` / `std::vector`
+
+<sup>[4]</sup> — gathered using GCC 8.2, libstdc++ and `-std=c++17`
 
 Where is the documentation?
 ---------------------------
