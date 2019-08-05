@@ -17,6 +17,10 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    v2019.01-301-gefe8d740 (2019-08-05)
+    -   MSVC 2019 compatibility
+    -   Added except() for taking everything except last N elements
+    -   Added StaticArray::slice() and suffix() with compile-time begin / end
     v2019.01-173-ge663b49c (2019-04-30)
     -   Different implementation for Array-to-view conversion
     v2019.01-107-g80d9f347 (2019-03-23)
@@ -24,7 +28,7 @@
     v2019.01-47-g524c127e (2019-02-18)
     -   Initial release
 
-    Generated from Corrade v2019.01-173-ge663b49c (2019-04-30), 627 / 3278 LoC
+    Generated from Corrade v2019.01-301-gefe8d740 (2019-08-05), 673 / 3355 LoC
 */
 
 /*
@@ -193,7 +197,7 @@ class Array {
             return Implementation::ArrayViewConverter<const T, U>::to(*this);
         }
 
-        #ifndef CORRADE_MSVC2017_COMPATIBILITY
+        #ifndef CORRADE_MSVC2019_COMPATIBILITY
         explicit operator bool() const { return _data; }
         #endif
 
@@ -250,6 +254,13 @@ class Array {
             return ArrayView<const T>(*this).template slice<size>(begin);
         }
 
+        template<std::size_t begin_, std::size_t end_> StaticArrayView<end_ - begin_, T> slice() {
+            return ArrayView<T>(*this).template slice<begin_, end_>();
+        }
+        template<std::size_t begin_, std::size_t end_> StaticArrayView<end_ - begin_, const T> slice() const {
+            return ArrayView<const T>(*this).template slice<begin_, end_>();
+        }
+
         ArrayView<T> prefix(T* end) {
             return ArrayView<T>(*this).prefix(end);
         }
@@ -281,6 +292,13 @@ class Array {
         }
         ArrayView<const T> suffix(std::size_t begin) const {
             return ArrayView<const T>(*this).suffix(begin);
+        }
+
+        ArrayView<T> except(std::size_t count) {
+            return ArrayView<T>(*this).except(count);
+        }
+        ArrayView<const T> except(std::size_t count) const {
+            return ArrayView<const T>(*this).except(count);
         }
 
         T* release();
@@ -484,6 +502,13 @@ template<std::size_t size_, class T> class StaticArray {
             return ArrayView<const T>(*this).template slice<viewSize>(begin);
         }
 
+        template<std::size_t begin_, std::size_t end_> StaticArrayView<end_ - begin_, T> slice() {
+            return StaticArrayView<size_, T>(*this).template slice<begin_, end_>();
+        }
+        template<std::size_t begin_, std::size_t end_> StaticArrayView<end_ - begin_, const T> slice() const {
+            return StaticArrayView<size_, const T>(*this).template slice<begin_, end_>();
+        }
+
         ArrayView<T> prefix(T* end) {
             return ArrayView<T>(*this).prefix(end);
         }
@@ -511,6 +536,27 @@ template<std::size_t size_, class T> class StaticArray {
         }
         ArrayView<const T> suffix(std::size_t begin) const {
             return ArrayView<const T>(*this).suffix(begin);
+        }
+
+        template<std::size_t begin_> StaticArrayView<size_ - begin_, T> suffix() {
+            return StaticArrayView<size_, T>(*this).template suffix<begin_>();
+        }
+        template<std::size_t begin_> StaticArrayView<size_ - begin_, const T> suffix() const {
+            return StaticArrayView<size_, const T>(*this).template suffix<begin_>();
+        }
+
+        ArrayView<T> except(std::size_t count) {
+            return ArrayView<T>(*this).except(count);
+        }
+        ArrayView<const T> except(std::size_t count) const {
+            return ArrayView<const T>(*this).except(count);
+        }
+
+        template<std::size_t count> StaticArrayView<size_ - count, T> except() {
+            return StaticArrayView<size_, T>(*this).template except<count>();
+        }
+        template<std::size_t count> StaticArrayView<size_ - count, const T> except() const {
+            return StaticArrayView<size_, const T>(*this).template except<count>();
         }
 
     private:

@@ -15,6 +15,10 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    v2019.01-301-gefe8d740 (2019-08-05)
+    -   MSVC 2019 compatibility
+    -   Added except() for taking everything except last N elements
+    -   Added StaticArrayView::slice() with compile-time begin and end
     v2019.01-173-ge663b49c (2019-04-30)
     -   Added ArrayView<void> as a counterpart to ArrayView<const void>
     -   Added compile-time-sized StaticArrayView::suffix()
@@ -23,7 +27,7 @@
     v2019.01-41-g39c08d7c (2019-02-18)
     -   Initial release
 
-    Generated from Corrade v2019.01-173-ge663b49c (2019-04-30), 610 / 2484 LoC
+    Generated from Corrade v2019.01-301-gefe8d740 (2019-08-05), 642 / 2519 LoC
 */
 
 /*
@@ -58,8 +62,8 @@
 #include <cassert>
 #endif
 
-#if defined(_MSC_VER) && _MSC_VER <= 1920
-#define CORRADE_MSVC2017_COMPATIBILITY
+#if defined(_MSC_VER) && _MSC_VER <= 1930
+#define CORRADE_MSVC2019_COMPATIBILITY
 #endif
 
 #ifndef CorradeArrayView_h
@@ -132,7 +136,7 @@ template<class T> class ArrayView {
             return Implementation::ArrayViewConverter<T, U>::to(*this);
         }
 
-        #ifndef CORRADE_MSVC2017_COMPATIBILITY
+        #ifndef CORRADE_MSVC2019_COMPATIBILITY
         constexpr explicit operator bool() const { return _data; }
         #endif
 
@@ -162,6 +166,8 @@ template<class T> class ArrayView {
 
         template<std::size_t viewSize> constexpr StaticArrayView<viewSize, T> slice(std::size_t begin) const;
 
+        template<std::size_t begin_, std::size_t end_> constexpr StaticArrayView<end_ - begin_, T> slice() const;
+
         constexpr ArrayView<T> prefix(T* end) const {
             return end ? slice(_data, end) : nullptr;
         }
@@ -170,8 +176,8 @@ template<class T> class ArrayView {
             return slice(0, end);
         }
 
-        template<std::size_t viewSize> constexpr StaticArrayView<viewSize, T> prefix() const {
-            return slice<viewSize>(_data);
+        template<std::size_t end_> constexpr StaticArrayView<end_, T> prefix() const {
+            return slice<0, end_>();
         }
 
         constexpr ArrayView<T> suffix(T* begin) const {
@@ -180,6 +186,10 @@ template<class T> class ArrayView {
 
         constexpr ArrayView<T> suffix(std::size_t begin) const {
             return slice(begin, _size);
+        }
+
+        constexpr ArrayView<T> except(std::size_t count) const {
+            return slice(0, _size - count);
         }
 
     private:
@@ -207,7 +217,7 @@ template<> class ArrayView<void> {
 
         template<class T, class = decltype(Implementation::ErasedArrayViewConverter<typename std::decay<T&&>::type>::from(std::declval<T&&>()))> constexpr /*implicit*/ ArrayView(T&& other) noexcept: ArrayView{Implementation::ErasedArrayViewConverter<typename std::decay<T&&>::type>::from(other)} {}
 
-        #ifndef CORRADE_MSVC2017_COMPATIBILITY
+        #ifndef CORRADE_MSVC2019_COMPATIBILITY
         constexpr explicit operator bool() const { return _data; }
         #endif
 
@@ -244,7 +254,7 @@ template<> class ArrayView<const void> {
 
         template<class T, class = decltype(Implementation::ErasedArrayViewConverter<const T>::from(std::declval<const T&>()))> constexpr /*implicit*/ ArrayView(const T& other) noexcept: ArrayView{Implementation::ErasedArrayViewConverter<const T>::from(other)} {}
 
-        #ifndef CORRADE_MSVC2017_COMPATIBILITY
+        #ifndef CORRADE_MSVC2019_COMPATIBILITY
         constexpr explicit operator bool() const { return _data; }
         #endif
 
@@ -336,7 +346,7 @@ template<std::size_t size_, class T> class StaticArrayView {
             return Implementation::StaticArrayViewConverter<size_, T, U>::to(*this);
         }
 
-        #ifndef CORRADE_MSVC2017_COMPATIBILITY
+        #ifndef CORRADE_MSVC2019_COMPATIBILITY
         constexpr explicit operator bool() const { return _data; }
         #endif
 
@@ -372,6 +382,8 @@ template<std::size_t size_, class T> class StaticArrayView {
             return ArrayView<T>(*this).template slice<viewSize>(begin);
         }
 
+        template<std::size_t begin_, std::size_t end_> constexpr StaticArrayView<end_ - begin_, T> slice() const;
+
         constexpr ArrayView<T> prefix(T* end) const {
             return ArrayView<T>(*this).prefix(end);
         }
@@ -379,7 +391,9 @@ template<std::size_t size_, class T> class StaticArrayView {
             return ArrayView<T>(*this).prefix(end);
         }
 
-        template<std::size_t end_> constexpr StaticArrayView<end_, T> prefix() const;
+        template<std::size_t end_> constexpr StaticArrayView<end_, T> prefix() const {
+            return slice<0, end_>();
+        }
 
         constexpr ArrayView<T> suffix(T* begin) const {
             return ArrayView<T>(*this).suffix(begin);
@@ -388,7 +402,17 @@ template<std::size_t size_, class T> class StaticArrayView {
             return ArrayView<T>(*this).suffix(begin);
         }
 
-        template<std::size_t begin_> constexpr StaticArrayView<size_ - begin_, T> suffix() const;
+        template<std::size_t begin_> constexpr StaticArrayView<size_ - begin_, T> suffix() const {
+            return slice<begin_, size_>();
+        }
+
+        constexpr ArrayView<T> except(std::size_t count) const {
+            return ArrayView<T>(*this).except(count);
+        }
+
+        template<std::size_t count> constexpr StaticArrayView<size_ - count, T> except() const {
+            return slice<0, size_ - count>();
+        }
 
     private:
         T* _data;
@@ -487,14 +511,22 @@ template<class T> template<std::size_t viewSize> constexpr StaticArrayView<viewS
         StaticArrayView<viewSize, T>{_data + begin};
 }
 
-template<std::size_t size_, class T> template<std::size_t end_> constexpr StaticArrayView<end_, T> StaticArrayView<size_, T>::prefix() const {
-    static_assert(end_ <= size_, "prefix size too large");
-    return StaticArrayView<end_, T>{_data};
+template<class T> template<std::size_t begin_, std::size_t end_> constexpr StaticArrayView<end_ - begin_, T> ArrayView<T>::slice() const {
+    static_assert(begin_ < end_, "fixed-size slice needs to have a positive size");
+    return CORRADE_CONSTEXPR_ASSERT(end_ <= _size,
+            "Containers::ArrayView::slice(): slice ["
+            << Utility::Debug::nospace << begin_
+            << Utility::Debug::nospace << ":"
+            << Utility::Debug::nospace << end_
+            << Utility::Debug::nospace << "] out of range for" << _size
+            << "elements"),
+        StaticArrayView<end_ - begin_, T>{_data + begin_};
 }
 
-template<std::size_t size_, class T> template<std::size_t begin_> constexpr StaticArrayView<size_ - begin_, T> StaticArrayView<size_, T>::suffix() const {
-    static_assert(begin_ <= size_, "suffix size too large");
-    return StaticArrayView<size_ - begin_, T>{_data + begin_};
+template<std::size_t size_, class T> template<std::size_t begin_, std::size_t end_> constexpr StaticArrayView<end_ - begin_, T> StaticArrayView<size_, T>::slice() const {
+    static_assert(begin_ < end_, "fixed-size slice needs to have a positive size");
+    static_assert(end_ <= size_, "slice out of bounds");
+    return StaticArrayView<end_ - begin_, T>{_data + begin_};
 }
 
 }}

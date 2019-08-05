@@ -15,10 +15,15 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    v2019.01-301-gefe8d740 (2019-08-05)
+    -   MSVC 2019 compatibility
+    -   New constructor taking just a size, with stride calculated implicitly
+    -   Added except() for taking everything except last N elements
+    -   Added every() for taking every Nth element
     v2019.01-173-ge663b49c (2019-04-30)
     -   Initial release
 
-    Generated from Corrade v2019.01-173-ge663b49c (2019-04-30), 594 / 2866 LoC
+    Generated from Corrade v2019.01-301-gefe8d740 (2019-08-05), 654 / 2945 LoC
 */
 
 /*
@@ -138,13 +143,22 @@ namespace Implementation {
     template<unsigned dimensions> constexpr std::size_t largestStride(const StridedDimensions<dimensions, std::size_t>&, const StridedDimensions<dimensions, std::ptrdiff_t>&, Sequence<>) {
         return 0;
     }
-
     constexpr std::size_t largerStride(std::size_t a, std::size_t b) {
         return a < b ? b : a;
     }
     template<unsigned dimensions, std::size_t first, std::size_t ...next> constexpr std::size_t largestStride(const StridedDimensions<dimensions, std::size_t>& size, const StridedDimensions<dimensions, std::ptrdiff_t>& stride, Sequence<first, next...>) {
         return largerStride(size[first]*std::size_t(stride[first] < 0 ? -stride[first] : stride[first]),
             largestStride(size, stride, Sequence<next...>{}));
+    }
+
+    template<unsigned dimensions> constexpr std::ptrdiff_t strideForSizeInternal(const StridedDimensions<dimensions, std::size_t>&, std::size_t, Sequence<>) {
+        return 1;
+    }
+    template<unsigned dimensions, std::size_t first, std::size_t ...next> constexpr std::ptrdiff_t strideForSizeInternal(const StridedDimensions<dimensions, std::size_t>& size, std::size_t index, Sequence<first, next...>) {
+        return (first > index ? size[first] : 1)*strideForSizeInternal(size, index, Sequence<next...>{});
+    }
+    template<unsigned dimensions, std::size_t ...index> constexpr StridedDimensions<dimensions, std::ptrdiff_t> strideForSize(const StridedDimensions<dimensions, std::size_t>& size, std::size_t typeSize, Sequence<index...>) {
+        return {std::ptrdiff_t(typeSize)*strideForSizeInternal(size, index, typename GenerateSequence<dimensions>::Type{})...};
     }
 }
 
@@ -238,6 +252,8 @@ template<unsigned dimensions, class T> class StridedArrayView {
 
         constexpr /*implicit*/ StridedArrayView(Containers::ArrayView<T> data, const Size& size, const Stride& stride) noexcept: StridedArrayView{data, data.data(), size, stride} {}
 
+        constexpr /*implicit*/ StridedArrayView(Containers::ArrayView<T> data, const Size& size) noexcept: StridedArrayView{data, data.data(), size, Implementation::strideForSize(size, sizeof(T), typename Implementation::GenerateSequence<dimensions>::Type{})} {}
+
         template<class U, std::size_t size, unsigned d = dimensions, class = typename std::enable_if<d == 1 && std::is_convertible<U*, T*>::value>::type>
         constexpr /*implicit*/ StridedArrayView(U(&data)[size]) noexcept: _data{data}, _size{size}, _stride{sizeof(T)} {
             static_assert(sizeof(T) == sizeof(U), "type sizes are not compatible");
@@ -313,6 +329,16 @@ template<unsigned dimensions, class T> class StridedArrayView {
         template<unsigned newDimensions = dimensions> StridedArrayView<newDimensions, T> suffix(const Size& begin) const {
             return slice<newDimensions>(begin, _size);
         }
+
+        StridedArrayView<dimensions, T> except(std::size_t count) const {
+            return slice({}, _size._data[0] - count);
+        }
+
+        template<unsigned newDimensions = dimensions> StridedArrayView<newDimensions, T> except(const Size& count) const;
+
+        StridedArrayView<dimensions, T> every(std::ptrdiff_t skip) const;
+
+        StridedArrayView<dimensions, T> every(const Stride& skip) const;
 
         template<unsigned dimensionA, unsigned dimensionB> StridedArrayView<dimensions, T> transposed() const;
 
@@ -489,8 +515,8 @@ namespace Implementation {
     template<unsigned dimensions, class T> struct StridedElement {
         static StridedArrayView<dimensions - 1, T> get(typename std::conditional<std::is_const<T>::value, const void, void>::type* data, const StridedDimensions<dimensions, std::size_t>& size, const StridedDimensions<dimensions, std::ptrdiff_t>& stride, std::size_t i) {
             return StridedArrayView<dimensions - 1, T>{
-                Containers::StaticArrayView<dimensions, const std::size_t>(size).template suffix<1>(),
-                Containers::StaticArrayView<dimensions, const std::ptrdiff_t>(stride).template suffix<1>(),
+                StridedDimensions<dimensions - 1, std::size_t>(size._data + 1, typename Implementation::GenerateSequence<dimensions - 1>::Type{}),
+                StridedDimensions<dimensions - 1, std::ptrdiff_t>(stride._data + 1, typename Implementation::GenerateSequence<dimensions - 1>::Type{}),
                 static_cast<typename std::conditional<std::is_const<T>::value, const char, char>::type*>(data) + i*stride._data[0]};
         }
     };
@@ -555,6 +581,40 @@ template<unsigned dimensions, class T> template<unsigned newDimensions> StridedA
     }
 
     return StridedArrayView<newDimensions, T>{size, stride, data};
+}
+
+template<unsigned dimensions, class T> template<unsigned newDimensions> StridedArrayView<newDimensions, T> StridedArrayView<dimensions, T>::except(const Size& count) const {
+    Size end{NoInit};
+    for(std::size_t i = 0; i != dimensions; ++i)
+        end._data[i] = _size._data[i] - count._data[i];
+    return slice<newDimensions>({}, end);
+}
+
+template<unsigned dimensions, class T> StridedArrayView<dimensions, T> StridedArrayView<dimensions, T>::every(const std::ptrdiff_t step) const {
+    Stride steps;
+    steps[0] = step;
+    for(std::size_t i = 1; i != dimensions; ++i) steps[i] = 1;
+    return every(steps);
+}
+
+template<unsigned dimensions, class T> StridedArrayView<dimensions, T> StridedArrayView<dimensions, T>::every(const Stride& step) const {
+    ErasedType* data = _data;
+    Size size = _size;
+    Stride stride = _stride;
+    for(std::size_t dimension = 0; dimension != dimensions; ++dimension) {
+        CORRADE_ASSERT(step[dimension], "Containers::StridedArrayView::every(): step in dimension" << dimension << "is zero", {});
+
+        std::size_t divisor;
+        if(step[dimension] < 0) {
+            data = static_cast<typename std::conditional<std::is_const<T>::value, const char, char>::type*>(data) + _stride._data[dimension]*(_size._data[dimension] ? _size._data[dimension] - 1 : 0);
+            divisor = -step[dimension];
+        } else divisor = step[dimension];
+
+        size[dimension] = (size[dimension] + divisor - 1)/divisor;
+        stride[dimension] *= step[dimension];
+    }
+
+    return StridedArrayView<dimensions, T>{size, stride, data};
 }
 
 template<unsigned dimensions, class T> template<unsigned dimensionA, unsigned dimensionB> StridedArrayView<dimensions, T> StridedArrayView<dimensions, T>::transposed() const {
