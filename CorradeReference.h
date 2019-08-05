@@ -19,7 +19,7 @@
     v2018.10-183-g4eb1adc0 (2019-01-23)
     -   Initial release
 
-    Generated from Corrade v2018.10-232-ge927d7f3 (2019-01-28), 115 / 1639 LoC
+    Generated from Corrade v2019.01-301-gefe8d740 (2019-08-05), 115 / 1656 LoC
 */
 
 /*

@@ -15,7 +15,7 @@
     v2019.01-186-gdd93f1f1 (2019-06-06)
     -   Initial release
 
-    Generated from Corrade v2019.01-186-gdd93f1f1 (2019-06-06), 57 / 2967 LoC
+    Generated from Corrade v2019.01-301-gefe8d740 (2019-08-05), 57 / 2967 LoC
 */
 
 /*

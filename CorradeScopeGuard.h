@@ -18,7 +18,7 @@
     v2018.10-232-ge927d7f3 (2019-01-28)
     -   Initial release
 
-    Generated from Corrade v2019.01-41-g39c08d7c (2019-02-18), 131 / 34 LoC
+    Generated from Corrade v2019.01-301-gefe8d740 (2019-08-05), 131 / 34 LoC
 */
 
 /*

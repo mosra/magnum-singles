@@ -16,7 +16,7 @@
     v2019.01-115-ged348b26 (2019-03-27)
     -   Initial release
 
-    Generated from Corrade v2019.01-115-ged348b26 (2019-03-27), 74 / 48 LoC
+    Generated from Corrade v2019.01-301-gefe8d740 (2019-08-05), 74 / 48 LoC
 */
 
 /*
