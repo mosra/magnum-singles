@@ -15,6 +15,9 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    v2019.10-0-g162d6a7d (2019-10-24)
+    -   Don't assert when creating arrays with non-zero stride but zero size
+    -   Added a StridedArrayView4D convenience typedef
     v2019.01-301-gefe8d740 (2019-08-05)
     -   MSVC 2019 compatibility
     -   New constructor taking just a size, with stride calculated implicitly
@@ -23,7 +26,7 @@
     v2019.01-173-ge663b49c (2019-04-30)
     -   Initial release
 
-    Generated from Corrade v2019.01-301-gefe8d740 (2019-08-05), 654 / 2945 LoC
+    Generated from Corrade v2019.10-0-g162d6a7d (2019-10-24), 666 / 2923 LoC
 */
 
 /*
@@ -68,6 +71,7 @@ template<unsigned, class> class StridedIterator;
 template<class T> using StridedArrayView1D = StridedArrayView<1, T>;
 template<class T> using StridedArrayView2D = StridedArrayView<2, T>;
 template<class T> using StridedArrayView3D = StridedArrayView<3, T>;
+template<class T> using StridedArrayView4D = StridedArrayView<4, T>;
 
 }}
 
@@ -140,6 +144,12 @@ namespace Implementation {
     template<unsigned, class> struct StridedElement;
     template<bool> struct ArrayCastFlattenOrInflate;
 
+    template<unsigned dimensions> constexpr bool isAnySizeZero(const StridedDimensions<dimensions, std::size_t>&, Sequence<>) {
+        return false;
+    }
+    template<unsigned dimensions, std::size_t first, std::size_t ...next> constexpr bool isAnySizeZero(const StridedDimensions<dimensions, std::size_t>& size, Sequence<first, next...>) {
+        return !size[first] || isAnySizeZero(size, Sequence<next...>{});
+    }
     template<unsigned dimensions> constexpr std::size_t largestStride(const StridedDimensions<dimensions, std::size_t>&, const StridedDimensions<dimensions, std::ptrdiff_t>&, Sequence<>) {
         return 0;
     }
@@ -246,7 +256,7 @@ template<unsigned dimensions, class T> class StridedArrayView {
         constexpr /*implicit*/ StridedArrayView() noexcept: _data{}, _size{}, _stride{} {}
 
         constexpr /*implicit*/ StridedArrayView(Containers::ArrayView<ErasedType> data, T* member, const Size& size, const Stride& stride) noexcept: _data{(
-            CORRADE_CONSTEXPR_ASSERT(!Implementation::largestStride(size, stride, typename Implementation::GenerateSequence<dimensions>::Type{}) || Implementation::largestStride(size, stride, typename Implementation::GenerateSequence<dimensions>::Type{}) <= data.size(),
+            CORRADE_CONSTEXPR_ASSERT(Implementation::isAnySizeZero(size, typename Implementation::GenerateSequence<dimensions>::Type{}) || Implementation::largestStride(size, stride, typename Implementation::GenerateSequence<dimensions>::Type{}) <= data.size(),
                 "Containers::StridedArrayView: data size" << data.size() << "is not enough for" << size << "elements of stride" << stride),
             member)}, _size{size}, _stride{stride} {}
 
@@ -370,6 +380,8 @@ template<class T> using StridedArrayView1D = StridedArrayView<1, T>;
 template<class T> using StridedArrayView2D = StridedArrayView<2, T>;
 
 template<class T> using StridedArrayView3D = StridedArrayView<3, T>;
+
+template<class T> using StridedArrayView4D = StridedArrayView<4, T>;
 #endif
 
 template<std::size_t size, class T> constexpr StridedArrayView1D<T> stridedArrayView(T(&data)[size]) {

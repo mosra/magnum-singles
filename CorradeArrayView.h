@@ -15,6 +15,8 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    v2019.10-0-g162d6a7d (2019-10-24)
+    -   Fixed OOB access when converting empty STL containers to ArrayView
     v2019.01-301-gefe8d740 (2019-08-05)
     -   MSVC 2019 compatibility
     -   Added except() for taking everything except last N elements
@@ -27,7 +29,7 @@
     v2019.01-41-g39c08d7c (2019-02-18)
     -   Initial release
 
-    Generated from Corrade v2019.01-301-gefe8d740 (2019-08-05), 642 / 2519 LoC
+    Generated from Corrade v2019.10-0-g162d6a7d (2019-10-24), 644 / 2489 LoC
 */
 
 /*
@@ -542,12 +544,12 @@ namespace Corrade { namespace Containers { namespace Implementation {
 
 template<std::size_t size, class T> struct ArrayViewConverter<T, std::array<T, size>> {
     constexpr static ArrayView<T> from(std::array<T, size>& other) {
-        return {&other[0], other.size()};
+        return {other.data(), other.size()};
     }
 };
 template<std::size_t size, class T> struct ArrayViewConverter<const T, std::array<T, size>> {
     constexpr static ArrayView<const T> from(const std::array<T, size>& other) {
-        return {&other[0], other.size()};
+        return {other.data(), other.size()};
     }
 };
 template<std::size_t size, class T> struct ErasedArrayViewConverter<std::array<T, size>>: ArrayViewConverter<T, std::array<T, size>> {};
@@ -555,12 +557,12 @@ template<std::size_t size, class T> struct ErasedArrayViewConverter<const std::a
 
 template<class T, class Allocator> struct ArrayViewConverter<T, std::vector<T, Allocator>> {
     static ArrayView<T> from(std::vector<T, Allocator>& other) {
-        return {&other[0], other.size()};
+        return {other.data(), other.size()};
     }
 };
 template<class T, class Allocator> struct ArrayViewConverter<const T, std::vector<T, Allocator>> {
     static ArrayView<const T> from(const std::vector<T, Allocator>& other) {
-        return {&other[0], other.size()};
+        return {other.data(), other.size()};
     }
 };
 template<class T, class Allocator> struct ErasedArrayViewConverter<std::vector<T, Allocator>>: ArrayViewConverter<T, std::vector<T, Allocator>> {};
@@ -568,12 +570,12 @@ template<class T, class Allocator> struct ErasedArrayViewConverter<const std::ve
 
 template<std::size_t size, class T> struct StaticArrayViewConverter<size, T, std::array<T, size>> {
     constexpr static StaticArrayView<size, T> from(std::array<T, size>& other) {
-        return StaticArrayView<size, T>{&other[0]};
+        return StaticArrayView<size, T>{other.data()};
     }
 };
 template<std::size_t size, class T> struct StaticArrayViewConverter<size, const T, std::array<T, size>> {
     constexpr static StaticArrayView<size, const T> from(const std::array<T, size>& other) {
-        return StaticArrayView<size, const T>(&other[0]);
+        return StaticArrayView<size, const T>(other.data());
     }
 };
 template<std::size_t size, class T> struct ErasedStaticArrayViewConverter<std::array<T, size>>: StaticArrayViewConverter<size, T, std::array<T, size>> {};

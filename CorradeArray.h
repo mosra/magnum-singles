@@ -17,6 +17,8 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    v2019.10-0-g162d6a7d (2019-10-24)
+    -   StaticArray is now copy/movable if the underlying type is
     v2019.01-301-gefe8d740 (2019-08-05)
     -   MSVC 2019 compatibility
     -   Added except() for taking everything except last N elements
@@ -28,7 +30,7 @@
     v2019.01-47-g524c127e (2019-02-18)
     -   Initial release
 
-    Generated from Corrade v2019.01-301-gefe8d740 (2019-08-05), 673 / 3355 LoC
+    Generated from Corrade v2019.10-0-g162d6a7d (2019-10-24), 698 / 3344 LoC
 */
 
 /*
@@ -431,17 +433,17 @@ template<std::size_t size_, class T> class StaticArray {
 
         explicit StaticArray(): StaticArray{DefaultInit} {}
 
-        template<class First, class ...Next> /*implicit*/ StaticArray(First&& first, Next&&... next): StaticArray{InPlaceInit, std::forward<First>(first), std::forward<Next>(next)...} {}
+        template<class First, class ...Next, class = typename std::enable_if<std::is_convertible<First&&, T>::value>::type> /*implicit*/ StaticArray(First&& first, Next&&... next): StaticArray{InPlaceInit, std::forward<First>(first), std::forward<Next>(next)...} {}
 
-        StaticArray(const StaticArray<size_, T>&) = delete;
+        StaticArray(const StaticArray<size_, T>& other) noexcept(std::is_nothrow_copy_constructible<T>::value);
 
-        StaticArray(StaticArray<size_, T>&&) = delete;
+        StaticArray(StaticArray<size_, T>&& other) noexcept(std::is_nothrow_move_constructible<T>::value);
 
         ~StaticArray();
 
-        StaticArray<size_, T>& operator=(const StaticArray<size_, T>&) = delete;
+        StaticArray<size_, T>& operator=(const StaticArray<size_, T>&) noexcept(std::is_nothrow_copy_constructible<T>::value);
 
-        StaticArray<size_, T>& operator=(StaticArray<size_, T>&&) = delete;
+        StaticArray<size_, T>& operator=(StaticArray<size_, T>&&) noexcept(std::is_nothrow_move_constructible<T>::value);
 
         template<class U, class = decltype(Implementation::StaticArrayViewConverter<size_, T, U>::to(std::declval<StaticArrayView<size_, T>>()))> /*implicit*/ operator U() {
             return Implementation::StaticArrayViewConverter<size_, T, U>::to(*this);
@@ -608,8 +610,31 @@ template<std::size_t size_, class T> template<class ...Args> StaticArray<size_, 
     }
 }
 
+template<std::size_t size_, class T> StaticArray<size_, T>::StaticArray(const StaticArray<size_, T>& other) noexcept(std::is_nothrow_copy_constructible<T>::value): StaticArray{NoInit} {
+    for(std::size_t i = 0; i != other.size(); ++i)
+        new(&_data[i]) T{other._data[i]};
+}
+
+template<std::size_t size_, class T> StaticArray<size_, T>::StaticArray(StaticArray<size_, T>&& other) noexcept(std::is_nothrow_move_constructible<T>::value): StaticArray{NoInit} {
+    for(std::size_t i = 0; i != other.size(); ++i)
+        new(&_data[i]) T{std::move(other._data[i])};
+}
+
 template<std::size_t size_, class T> StaticArray<size_, T>::~StaticArray() {
     for(T& i: _data) i.~T();
+}
+
+template<std::size_t size_, class T> StaticArray<size_, T>& StaticArray<size_, T>::operator=(const StaticArray<size_, T>& other) noexcept(std::is_nothrow_copy_constructible<T>::value) {
+    for(std::size_t i = 0; i != other.size(); ++i)
+        _data[i] = other._data[i];
+    return *this;
+}
+
+template<std::size_t size_, class T> StaticArray<size_, T>& StaticArray<size_, T>::operator=(StaticArray<size_, T>&& other) noexcept(std::is_nothrow_move_constructible<T>::value) {
+    using std::swap;
+    for(std::size_t i = 0; i != other.size(); ++i)
+        swap(_data[i], other._data[i]);
+    return *this;
 }
 
 template<std::size_t size_, class T> template<std::size_t viewSize> StaticArrayView<viewSize, T> StaticArray<size_, T>::prefix() {
