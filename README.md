@@ -16,29 +16,29 @@ grow with more Magnum features being exposed this way.
 
 Library         | LoC | PpLoC<sup>[1]</sup>     | Description
 --------------- | --- | ----------------------- | -------------------
-**[CorradeArrayView.h](CorradeArrayView.h)** | 644 | 2489 | [Containers::ArrayView](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1ArrayView.html) and [Containers::StaticArrayView](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1StaticArrayView.html), lightweight alternatives to [`std::span`](https://en.cppreference.com/w/cpp/container/span)
-**[CorradeStridedArrayView.h](CorradeStridedArrayView.h)** | 666<sup>[2]</sup> | 2923 | [Containers::StridedArrayView](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1StridedArrayView.html), multi-dimensional strided array view. Depends on `CorradeArrayView.h`.
-**[CorradeArray.h](CorradeArray.h)** | 698<sup>[2]</sup> | 3344 | [Containers::Array](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Array.html) and [Containers::StaticArray](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1StaticArray.html), lightweight alternatives to [`std::vector`](https://en.cppreference.com/w/cpp/container/vector) and [`std::array`](https://en.cppreference.com/w/cpp/container/span). Depends on `CorradeArrayView.h`.
-**[CorradeOptional.h](CorradeOptional.h)** | 330 | 2736   | [Containers::Optional](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Optional.html), a lightweight alternative to [`std::optional`](https://en.cppreference.com/w/cpp/utility/optional)
-**[CorradePointer.h](CorradePointer.h)** | 263 | 2312     | [Containers::Pointer](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Pointer.html), a lightweight alternative to [`std::unique_ptr`](https://en.cppreference.com/w/cpp/memory/unique_ptr)
-**[CorradeReference.h](CorradeReference.h)** | 115 | 1626 | [Containers::Reference](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Reference.html), a lightweight alternative to [`std::reference_wrapper`](https://en.cppreference.com/w/cpp/utility/functional/reference_wrapper)
+**[CorradeArrayView.h](CorradeArrayView.h)** | 705 | 2648 | [Containers::ArrayView](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1ArrayView.html) and [Containers::StaticArrayView](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1StaticArrayView.html), lightweight alternatives to [`std::span`](https://en.cppreference.com/w/cpp/container/span)
+**[CorradeStridedArrayView.h](CorradeStridedArrayView.h)** | 911<sup>[2]</sup> | 3245 | [Containers::StridedArrayView](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1StridedArrayView.html), multi-dimensional strided array view. Depends on `CorradeArrayView.h`.
+**[CorradeArray.h](CorradeArray.h)** | 754<sup>[2]</sup> | 3530 | [Containers::Array](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Array.html) and [Containers::StaticArray](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1StaticArray.html), lightweight alternatives to [`std::vector`](https://en.cppreference.com/w/cpp/container/vector) and [`std::array`](https://en.cppreference.com/w/cpp/container/span). Depends on `CorradeArrayView.h`.
+**[CorradeOptional.h](CorradeOptional.h)** | 358 | 2883   | [Containers::Optional](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Optional.html), a lightweight alternative to [`std::optional`](https://en.cppreference.com/w/cpp/utility/optional)
+**[CorradePointer.h](CorradePointer.h)** | 273 | 2457     | [Containers::Pointer](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Pointer.html), a lightweight alternative to [`std::unique_ptr`](https://en.cppreference.com/w/cpp/memory/unique_ptr)
+**[CorradeReference.h](CorradeReference.h)** | 115 | 1764 | [Containers::Reference](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1Reference.html), a lightweight alternative to [`std::reference_wrapper`](https://en.cppreference.com/w/cpp/utility/functional/reference_wrapper)
 **[CorradeScopeGuard.h](CorradeScopeGuard.h)** | 131 | 34 | [Containers::ScopeGuard](https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1ScopeGuard.html), a lightweight alternative to [`std::unique_ptr`](https://en.cppreference.com/w/cpp/memory/unique_ptr) with a custom deleter
-**[CorradeStlForwardArray.h](CorradeStlForwardArray.h)** | 67 | 2436<sup>[3]</sup> | [Corrade's forward declaration for `std::array`](https://doc.magnum.graphics/corrade/StlForwardArray_8h.html), a lightweight alternative to the full [`<array>`](https://en.cppreference.com/w/cpp/header/array) (15k PpLOC<sup>[1]</sup>) where supported
+**[CorradeStlForwardArray.h](CorradeStlForwardArray.h)** | 67 | 2471<sup>[3]</sup> | [Corrade's forward declaration for `std::array`](https://doc.magnum.graphics/corrade/StlForwardArray_8h.html), a lightweight alternative to the full [`<array>`](https://en.cppreference.com/w/cpp/header/array) (15k PpLOC<sup>[1]</sup>) where supported
 **[CorradeStlForwardString.h](CorradeStlForwardString.h)** | 74 | 48 | [Corrade's forward declaration for `std::string`](https://doc.magnum.graphics/corrade/StlForwardString_8h.html), a lightweight alternative to the full [`<string>`](https://en.cppreference.com/w/cpp/header/string) (11k PpLOC<sup>[1]</sup>) where supported
-**[CorradeStlForwardTuple.h](CorradeStlForwardTuple.h)** | 78 | 1601 | [Corrade's forward declaration for `std::tuple`](https://doc.magnum.graphics/corrade/StlForwardTuple_8h.html), a lightweight alternative to the full [`<tuple>`](https://en.cppreference.com/w/cpp/header/tuple) (13k PpLOC<sup>[1]</sup>) where supported
-**[CorradeStlForwardVector.h](CorradeStlForwardVector.h)** | 62 | 766<sup>[3]</sup> | [Corrade's forward declaration for `std::vector`](https://doc.magnum.graphics/corrade/StlForwardVector_8h.html), a lightweight alternative to the full [`<vector>`](https://en.cppreference.com/w/cpp/header/tuple) (9k PpLOC<sup>[1]</sup>) where supported
-**[CorradeStlMath.h](CorradeStlMath.h)** | 57 | 2970<sup>[4]</sup> | [Corrade's optimized `<cmath>`](https://doc.magnum.graphics/corrade/StlMath_8h.html), without the heavy C++17 additions (which is otherwise 11k PpLOC<sup>[4]</sup>)
-**[MagnumMath.hpp](MagnumMath.hpp)** | 7499 | 9608        | [Math](https://doc.magnum.graphics/magnum/namespaceMagnum_1_1Math.html) namespace, a full-featured graphics-oriented linear algebra library
+**[CorradeStlForwardTuple.h](CorradeStlForwardTuple.h)** | 78 | 1739 | [Corrade's forward declaration for `std::tuple`](https://doc.magnum.graphics/corrade/StlForwardTuple_8h.html), a lightweight alternative to the full [`<tuple>`](https://en.cppreference.com/w/cpp/header/tuple) (13k PpLOC<sup>[1]</sup>) where supported
+**[CorradeStlForwardVector.h](CorradeStlForwardVector.h)** | 62 | 783<sup>[3]</sup> | [Corrade's forward declaration for `std::vector`](https://doc.magnum.graphics/corrade/StlForwardVector_8h.html), a lightweight alternative to the full [`<vector>`](https://en.cppreference.com/w/cpp/header/tuple) (9k PpLOC<sup>[1]</sup>) where supported
+**[CorradeStlMath.h](CorradeStlMath.h)** | 57 | 3015<sup>[4]</sup> | [Corrade's optimized `<cmath>`](https://doc.magnum.graphics/corrade/StlMath_8h.html), without the heavy C++17 additions (which is otherwise 11k PpLOC<sup>[4]</sup>)
+**[MagnumMath.hpp](MagnumMath.hpp)** | 7748 | 9946        | [Math](https://doc.magnum.graphics/magnum/namespaceMagnum_1_1Math.html) namespace, a full-featured graphics-oriented linear algebra library
 
 <sup>[1]</sup> — lines of code after a preprocessor run, with system includes
-expanded. Gathered using GCC 9.2 and libstdc++, unless said otherwise.
+expanded. Gathered using GCC 10.1 and libstdc++, unless said otherwise.
 
 <sup>[2]</sup> — not a total size due to inter-library dependencies
 
-<sup>[3]</sup> — gathered using Clang 9.0 and libc++, since libstdc++ doesn't
-have a forward declaration for `std:array` / `std::vector`
+<sup>[3]</sup> — gathered using Clang 10.0 and libc++, since libstdc++ doesn't
+have a forward declaration for `std::array` / `std::vector`
 
-<sup>[4]</sup> — gathered using GCC 9.2, libstdc++ and `-std=c++17`
+<sup>[4]</sup> — gathered using GCC 10.1, libstdc++ and `-std=c++17`
 
 Where is the documentation?
 ---------------------------

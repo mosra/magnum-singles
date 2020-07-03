@@ -15,6 +15,13 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    v2020.06-0-g61d1b58c (2020-06-27)
+    -   Conversion of const types to mutable arrays is now disabled with SFINAE
+        to prevent ambiguous constructor overloads
+    -   Added arrayCast() overloads from ArrayView<void> and
+        ArrayView<const void>
+    -   Updated std::span compatibility for libc++ 9.0, which switched away
+        from a signed size type
     v2019.10-0-g162d6a7d (2019-10-24)
     -   Fixed OOB access when converting empty STL containers to ArrayView
     v2019.01-301-gefe8d740 (2019-08-05)
@@ -29,14 +36,14 @@
     v2019.01-41-g39c08d7c (2019-02-18)
     -   Initial release
 
-    Generated from Corrade v2019.10-0-g162d6a7d (2019-10-24), 644 / 2489 LoC
+    Generated from Corrade v2020.06-0-g61d1b58c (2020-06-27), 705 / 2648 LoC
 */
 
 /*
     This file is part of Corrade.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
-                2017, 2018, 2019 Vladimír Vondruš <mosra@centrum.cz>
+                2017, 2018, 2019, 2020 Vladimír Vondruš <mosra@centrum.cz>
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the "Software"),
@@ -58,6 +65,7 @@
 */
 
 #include <cstddef>
+#include <initializer_list>
 #include <type_traits>
 #include <utility>
 #if (!defined(CORRADE_ASSERT) || !defined(CORRADE_CONSTEXPR_ASSERT)) && !defined(NDEBUG)
@@ -211,11 +219,17 @@ template<> class ArrayView<void> {
 
         template<class T> constexpr /*implicit*/ ArrayView(T* data, std::size_t size) noexcept: _data(data), _size(size*sizeof(T)) {}
 
-        template<class T, std::size_t size> constexpr /*implicit*/ ArrayView(T(&data)[size]) noexcept: _data(data), _size(size*sizeof(T)) {}
+        template<class T, std::size_t size
+            , class = typename std::enable_if<!std::is_const<T>::value>::type
+        > constexpr /*implicit*/ ArrayView(T(&data)[size]) noexcept: _data(data), _size(size*sizeof(T)) {}
 
-        template<class T> constexpr /*implicit*/ ArrayView(ArrayView<T> array) noexcept: _data(array), _size(array.size()*sizeof(T)) {}
+        template<class T
+            , class = typename std::enable_if<!std::is_const<T>::value>::type
+        > constexpr /*implicit*/ ArrayView(ArrayView<T> array) noexcept: _data(array), _size(array.size()*sizeof(T)) {}
 
-        template<std::size_t size, class T> constexpr /*implicit*/ ArrayView(const StaticArrayView<size, T>& array) noexcept: _data{array}, _size{size*sizeof(T)} {}
+        template<std::size_t size, class T
+            , class = typename std::enable_if<!std::is_const<T>::value>::type
+        > constexpr /*implicit*/ ArrayView(const StaticArrayView<size, T>& array) noexcept: _data{array}, _size{size*sizeof(T)} {}
 
         template<class T, class = decltype(Implementation::ErasedArrayViewConverter<typename std::decay<T&&>::type>::from(std::declval<T&&>()))> constexpr /*implicit*/ ArrayView(T&& other) noexcept: ArrayView{Implementation::ErasedArrayViewConverter<typename std::decay<T&&>::type>::from(other)} {}
 
@@ -250,6 +264,8 @@ template<> class ArrayView<const void> {
 
         template<class T, std::size_t size> constexpr /*implicit*/ ArrayView(T(&data)[size]) noexcept: _data(data), _size(size*sizeof(T)) {}
 
+        constexpr /*implicit*/ ArrayView(ArrayView<void> array) noexcept: _data{array}, _size{array.size()} {}
+
         template<class T> constexpr /*implicit*/ ArrayView(ArrayView<T> array) noexcept: _data(array), _size(array.size()*sizeof(T)) {}
 
         template<std::size_t size, class T> constexpr /*implicit*/ ArrayView(const StaticArrayView<size, T>& array) noexcept: _data{array}, _size{size*sizeof(T)} {}
@@ -281,6 +297,10 @@ template<std::size_t size, class T> constexpr ArrayView<T> arrayView(T(&data)[si
     return ArrayView<T>{data};
 }
 
+template<class T> ArrayView<const T> arrayView(std::initializer_list<T> list) {
+    return ArrayView<const T>{list.begin(), list.size()};
+}
+
 template<std::size_t size, class T> constexpr ArrayView<T> arrayView(StaticArrayView<size, T> view) {
     return ArrayView<T>{view};
 }
@@ -300,6 +320,19 @@ template<class U, class T> ArrayView<U> arrayCast(ArrayView<T> view) {
     CORRADE_ASSERT(size*sizeof(U) == view.size()*sizeof(T),
         "Containers::arrayCast(): can't reinterpret" << view.size() << sizeof(T) << Utility::Debug::nospace << "-byte items into a" << sizeof(U) << Utility::Debug::nospace << "-byte type", {});
     return {reinterpret_cast<U*>(view.begin()), size};
+}
+
+template<class U> ArrayView<U> arrayCast(ArrayView<const void> view) {
+    static_assert(std::is_standard_layout<U>::value, "the target type is not standard layout");
+    const std::size_t size = view.size()/sizeof(U);
+    CORRADE_ASSERT(size*sizeof(U) == view.size(),
+        "Containers::arrayCast(): can't reinterpret" << view.size() << "bytes into a" << sizeof(U) << Utility::Debug::nospace << "-byte type", {});
+    return {reinterpret_cast<U*>(view.data()), size};
+}
+
+template<class U> ArrayView<U> arrayCast(ArrayView<void> view) {
+    auto out = arrayCast<const U>(ArrayView<const void>{view});
+    return ArrayView<U>{const_cast<U*>(out.data()), out.size()};
 }
 
 template<class T> constexpr std::size_t arraySize(ArrayView<T> view) {
@@ -546,6 +579,9 @@ template<std::size_t size, class T> struct ArrayViewConverter<T, std::array<T, s
     constexpr static ArrayView<T> from(std::array<T, size>& other) {
         return {other.data(), other.size()};
     }
+    constexpr static ArrayView<T> from(std::array<T, size>&& other) {
+        return {other.data(), other.size()};
+    }
 };
 template<std::size_t size, class T> struct ArrayViewConverter<const T, std::array<T, size>> {
     constexpr static ArrayView<const T> from(const std::array<T, size>& other) {
@@ -557,6 +593,9 @@ template<std::size_t size, class T> struct ErasedArrayViewConverter<const std::a
 
 template<class T, class Allocator> struct ArrayViewConverter<T, std::vector<T, Allocator>> {
     static ArrayView<T> from(std::vector<T, Allocator>& other) {
+        return {other.data(), other.size()};
+    }
+    static ArrayView<T> from(std::vector<T, Allocator>&& other) {
         return {other.data(), other.size()};
     }
 };
@@ -587,10 +626,20 @@ template<std::size_t size, class T> struct ErasedStaticArrayViewConverter<const 
 #endif
 #ifdef CORRADE_ARRAYVIEW_STL_SPAN_COMPATIBILITY
 #include <span>
+#include <ciso646>
+#ifdef _LIBCPP_VERSION
+#define CORRADE_TARGET_LIBCXX
+#endif
 #ifndef Corrade_Containers_ArrayViewStlSpan_h
 #define Corrade_Containers_ArrayViewStlSpan_h
 
 namespace Corrade { namespace Containers { namespace Implementation {
+
+#if defined(CORRADE_TARGET_LIBCXX) && _LIBCPP_VERSION < 9000
+typedef std::ptrdiff_t StlSpanSizeType;
+#else
+typedef std::size_t StlSpanSizeType;
+#endif
 
 template<class T> struct ArrayViewConverter<T, std::span<T>> {
     constexpr static ArrayView<T> from(std::span<T> other) {
@@ -606,35 +655,47 @@ template<class T> struct ArrayViewConverter<const T, std::span<T>> {
 template<class T> struct ErasedArrayViewConverter<std::span<T>>: ArrayViewConverter<T, std::span<T>> {};
 template<class T> struct ErasedArrayViewConverter<const std::span<T>>: ArrayViewConverter<T, std::span<T>> {};
 
-template<class T, std::ptrdiff_t Extent> struct ArrayViewConverter<T, std::span<T, Extent>> {
+template<class T, StlSpanSizeType Extent> struct ArrayViewConverter<T, std::span<T, Extent>> {
     constexpr static ArrayView<T> from(std::span<T, Extent> other) {
         return {other.data(), std::size_t(other.size())};
     }
 };
-template<class T, std::ptrdiff_t Extent> struct ArrayViewConverter<const T, std::span<T, Extent>> {
+template<class T, StlSpanSizeType Extent> struct ArrayViewConverter<const T, std::span<T, Extent>> {
     constexpr static ArrayView<T> from(std::span<T, Extent> other) {
         return {other.data(), std::size_t(other.size())};
     }
 };
-template<class T, std::ptrdiff_t Extent> struct ArrayViewConverter<T, const std::span<T, Extent>>: ArrayViewConverter<T, std::span<T, Extent>> {};
-template<class T, std::ptrdiff_t Extent> struct ErasedArrayViewConverter<std::span<T, Extent>>: ArrayViewConverter<T, std::span<T, Extent>> {};
-template<class T, std::ptrdiff_t Extent> struct ErasedArrayViewConverter<const std::span<T, Extent>>: ArrayViewConverter<T, std::span<T, Extent>> {};
+template<class T, StlSpanSizeType Extent> struct ArrayViewConverter<T, const std::span<T, Extent>>: ArrayViewConverter<T, std::span<T, Extent>> {};
+template<class T, StlSpanSizeType Extent> struct ErasedArrayViewConverter<std::span<T, Extent>>: ArrayViewConverter<T, std::span<T, Extent>> {};
+template<class T, StlSpanSizeType Extent> struct ErasedArrayViewConverter<const std::span<T, Extent>>: ArrayViewConverter<T, std::span<T, Extent>> {};
 
-template<std::size_t size, class T> struct StaticArrayViewConverter<size, T, std::span<T, std::ptrdiff_t(size)>> {
-    constexpr static StaticArrayView<size, T> from(std::span<T> other) {
+template<std::size_t size, class T> struct StaticArrayViewConverter<size, T, std::span<T, StlSpanSizeType(size)>> {
+    constexpr static StaticArrayView<size, T> from(std::span<T, StlSpanSizeType(size)> other) {
         return StaticArrayView<size, T>{other.data()};
     }
+    #if !defined(CORRADE_TARGET_LIBCXX) || _LIBCPP_VERSION >= 9000
+    constexpr static std::span<T, size> to(StaticArrayView<size, T> other) {
+        return std::span<T, size>{other.data(), other.size()};
+    }
+    #endif
 };
-template<std::size_t size, class T> struct StaticArrayViewConverter<size, T, const std::span<T, std::ptrdiff_t(size)>>: StaticArrayViewConverter<size, T, std::span<T, std::ptrdiff_t(size)>> {};
-template<std::size_t size, class T> struct StaticArrayViewConverter<size, const T, std::span<T, std::ptrdiff_t(size)>> {
-    constexpr static StaticArrayView<size, const T> from(std::span<T> other) {
+template<std::size_t size, class T> struct StaticArrayViewConverter<size, T, const std::span<T, StlSpanSizeType(size)>>: StaticArrayViewConverter<size, T, std::span<T, StlSpanSizeType(size)>> {};
+template<std::size_t size, class T> struct StaticArrayViewConverter<size, const T, std::span<T, StlSpanSizeType(size)>> {
+    constexpr static StaticArrayView<size, const T> from(std::span<T, StlSpanSizeType(size)> other) {
         return StaticArrayView<size, const T>{other.data()};
     }
 };
-template<class T, std::ptrdiff_t Extent> struct ErasedStaticArrayViewConverter<std::span<T, Extent>>: StaticArrayViewConverter<std::size_t(Extent), T, std::span<T, Extent>> {
+#if !defined(CORRADE_TARGET_LIBCXX) || _LIBCPP_VERSION >= 9000
+template<std::size_t size, class T> struct StaticArrayViewConverter<size, T, std::span<const T, size>> {
+    constexpr static std::span<const T, size> to(StaticArrayView<size, T> other) {
+        return std::span<const T, size>{other.data(), other.size()};
+    }
+};
+#endif
+template<class T, StlSpanSizeType Extent> struct ErasedStaticArrayViewConverter<std::span<T, Extent>>: StaticArrayViewConverter<std::size_t(Extent), T, std::span<T, Extent>> {
     static_assert(Extent >= 0, "can't convert dynamic std::span to StaticArrayView");
 };
-template<class T, std::ptrdiff_t Extent> struct ErasedStaticArrayViewConverter<const std::span<T, Extent>>: StaticArrayViewConverter<std::size_t(Extent), T, std::span<T, Extent>> {
+template<class T, StlSpanSizeType Extent> struct ErasedStaticArrayViewConverter<const std::span<T, Extent>>: StaticArrayViewConverter<std::size_t(Extent), T, std::span<T, Extent>> {
     static_assert(Extent >= 0, "can't convert dynamic std::span to StaticArrayView");
 };
 

@@ -18,14 +18,14 @@
     v2018.10-232-ge927d7f3 (2019-01-28)
     -   Initial release
 
-    Generated from Corrade v2019.01-301-gefe8d740 (2019-08-05), 131 / 34 LoC
+    Generated from Corrade v2020.06-0-g61d1b58c (2020-06-27), 131 / 34 LoC
 */
 
 /*
     This file is part of Corrade.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
-                2017, 2018, 2019 Vladimír Vondruš <mosra@centrum.cz>
+                2017, 2018, 2019, 2020 Vladimír Vondruš <mosra@centrum.cz>
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the "Software"),

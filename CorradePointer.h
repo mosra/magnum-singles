@@ -13,6 +13,9 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    v2020.06-0-g61d1b58c (2020-06-27)
+    -   Working around various compiler-specific issues and standard defects
+        when using {}-initialization for aggregate types
     v2019.01-107-g80d9f347 (2019-03-23)
     -   Including <cassert> only when needed
     v2018.10-232-ge927d7f3 (2019-01-28)
@@ -21,14 +24,14 @@
     v2018.10-183-g4eb1adc0 (2019-01-23)
     -   Initial release
 
-    Generated from Corrade v2019.01-301-gefe8d740 (2019-08-05), 263 / 2342 LoC
+    Generated from Corrade v2020.06-0-g61d1b58c (2020-06-27), 273 / 2457 LoC
 */
 
 /*
     This file is part of Corrade.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
-                2017, 2018, 2019 Vladimír Vondruš <mosra@centrum.cz>
+                2017, 2018, 2019, 2020 Vladimír Vondruš <mosra@centrum.cz>
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the "Software"),
@@ -119,6 +122,13 @@ namespace Corrade { namespace Containers {
 
 namespace Implementation {
     template<class, class> struct PointerConverter;
+
+    template<class T, class First, class ...Next> T* allocate(First&& first, Next&& ...next) {
+        return new T{std::forward<First>(first), std::forward<Next>(next)...};
+    }
+    template<class T> T* allocate() {
+        return new T();
+    }
 }
 
 template<class T> class Pointer {
@@ -129,7 +139,7 @@ template<class T> class Pointer {
 
         explicit Pointer(T* pointer) noexcept: _pointer{pointer} {}
 
-        template<class ...Args> explicit Pointer(InPlaceInitT, Args&&... args): _pointer{new T{std::forward<Args>(args)...}} {}
+        template<class ...Args> explicit Pointer(InPlaceInitT, Args&&... args): _pointer{Implementation::allocate<T>(std::forward<Args>(args)...)} {}
 
         template<class U, class = typename std::enable_if<std::is_base_of<T, U>::value>::type> /*implicit*/ Pointer(Pointer<U>&& other) noexcept: _pointer{other.release()} {}
 
@@ -190,7 +200,7 @@ template<class T> class Pointer {
 
         template<class ...Args> T& emplace(Args&&... args) {
             delete _pointer;
-            _pointer = new T{std::forward<Args>(args)...};
+            _pointer = Implementation::allocate<T>(std::forward<Args>(args)...);
             return *_pointer;
         }
 

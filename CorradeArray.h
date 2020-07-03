@@ -17,6 +17,11 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    v2020.06-0-g61d1b58c (2020-06-27)
+    -   Default initialization got changed to ValueInit, which means builtin
+        types are zero-initialized instead of kept uninitialized
+    -   Working around various compiler-specific issues and standard defects
+        when using {}-initialization for aggregate types
     v2019.10-0-g162d6a7d (2019-10-24)
     -   StaticArray is now copy/movable if the underlying type is
     v2019.01-301-gefe8d740 (2019-08-05)
@@ -30,14 +35,14 @@
     v2019.01-47-g524c127e (2019-02-18)
     -   Initial release
 
-    Generated from Corrade v2019.10-0-g162d6a7d (2019-10-24), 698 / 3344 LoC
+    Generated from Corrade v2020.06-0-g61d1b58c (2020-06-27), 754 / 3530 LoC
 */
 
 /*
     This file is part of Corrade.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
-                2017, 2018, 2019 Vladimír Vondruš <mosra@centrum.cz>
+                2017, 2018, 2019, 2020 Vladimír Vondruš <mosra@centrum.cz>
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the "Software"),
@@ -64,6 +69,10 @@
 #include <utility>
 
 #include "CorradeArrayView.h"
+
+#ifdef __GNUC__
+#define CORRADE_TARGET_GCC
+#endif
 
 #ifndef CorradeArray_h
 #define CorradeArray_h
@@ -124,6 +133,27 @@ constexpr InPlaceInitT InPlaceInit{InPlaceInitT::Init{}};
 }}
 
 #endif
+#ifndef Corrade_Containers_constructHelpers_h
+#define Corrade_Containers_constructHelpers_h
+
+namespace Corrade { namespace Containers { namespace Implementation {
+
+template<class T, class First, class ...Next> inline void construct(T& value, First&& first, Next&& ...next) {
+    new(&value) T{std::forward<First>(first), std::forward<Next>(next)...};
+}
+template<class T> inline void construct(T& value) {
+    new(&value) T();
+}
+
+#if defined(CORRADE_TARGET_GCC) && __GNUC__ < 5
+template<class T> inline void construct(T& value, T&& b) {
+    new(&value) T(std::move(b));
+}
+#endif
+
+}}}
+
+#endif
 #ifndef Corrade_Containers_Array_h
 #define Corrade_Containers_Array_h
 
@@ -149,15 +179,28 @@ namespace Implementation {
         }
     };
 
-    template<class T> void noInitDeleter(T* data, std::size_t size) {
-        if(data) for(T *it = data, *end = data + size; it != end; ++it)
-            it->~T();
-        delete[] reinterpret_cast<char*>(data);
+    template<class T> T* noInitAllocate(std::size_t size, typename std::enable_if<std::is_trivial<T>::value>::type* = nullptr) {
+        return new T[size];
+    }
+    template<class T> T* noInitAllocate(std::size_t size, typename std::enable_if<!std::is_trivial<T>::value>::type* = nullptr) {
+        return reinterpret_cast<T*>(new char[size*sizeof(T)]);
+    }
+
+    template<class T> auto noInitDeleter(typename std::enable_if<std::is_trivial<T>::value>::type* = nullptr) -> void(*)(T*, std::size_t) {
+        return nullptr;
+    }
+    template<class T> auto noInitDeleter(typename std::enable_if<!std::is_trivial<T>::value>::type* = nullptr) -> void(*)(T*, std::size_t) {
+        return [](T* data, std::size_t size) {
+            if(data) for(T *it = data, *end = data + size; it != end; ++it)
+                it->~T();
+            delete[] reinterpret_cast<char*>(data);
+        };
     }
 }
 
 template<class T, class D>
 class Array {
+
     public:
         typedef T Type;
         typedef D Deleter;
@@ -171,13 +214,13 @@ class Array {
 
         explicit Array(ValueInitT, std::size_t size): _data{size ? new T[size]() : nullptr}, _size{size}, _deleter{nullptr} {}
 
-        explicit Array(NoInitT, std::size_t size): _data{size ? reinterpret_cast<T*>(new char[size*sizeof(T)]) : nullptr}, _size{size}, _deleter{Implementation::noInitDeleter} {}
+        explicit Array(NoInitT, std::size_t size): _data{size ? Implementation::noInitAllocate<T>(size) : nullptr}, _size{size}, _deleter{Implementation::noInitDeleter<T>()} {}
 
         template<class... Args> explicit Array(DirectInitT, std::size_t size, Args&&... args);
 
         explicit Array(InPlaceInitT, std::initializer_list<T> list);
 
-        explicit Array(std::size_t size): Array{DefaultInit, size} {}
+        explicit Array(std::size_t size): Array{ValueInit, size} {}
 
         explicit Array(T* data, std::size_t size, D deleter = Implementation::DefaultDeleter<D>{}()): _data{data}, _size{size}, _deleter(deleter) {}
 
@@ -189,7 +232,7 @@ class Array {
 
         Array<T, D>& operator=(const Array<T, D>&) = delete;
 
-        Array<T, D>& operator=(Array<T, D>&&) noexcept;
+        Array<T, D>& operator=(Array<T, D>&& other) noexcept;
 
         template<class U, class = decltype(Implementation::ArrayViewConverter<T, U>::to(std::declval<ArrayView<T>>()))> /*implicit*/ operator U() {
             return Implementation::ArrayViewConverter<T, U>::to(*this);
@@ -259,6 +302,7 @@ class Array {
         template<std::size_t begin_, std::size_t end_> StaticArrayView<end_ - begin_, T> slice() {
             return ArrayView<T>(*this).template slice<begin_, end_>();
         }
+
         template<std::size_t begin_, std::size_t end_> StaticArrayView<end_ - begin_, const T> slice() const {
             return ArrayView<const T>(*this).template slice<begin_, end_>();
         }
@@ -311,6 +355,10 @@ class Array {
         D _deleter;
 };
 
+template<class T> inline Array<T> array(std::initializer_list<T> list) {
+    return Array<T>{InPlaceInit, list};
+}
+
 template<class T, class D> inline ArrayView<T> arrayView(Array<T, D>& array) {
     return ArrayView<T>{array};
 }
@@ -334,11 +382,12 @@ template<class T> std::size_t arraySize(const Array<T>& view) {
 template<class T, class D> inline Array<T, D>::Array(Array<T, D>&& other) noexcept: _data{other._data}, _size{other._size}, _deleter{other._deleter} {
     other._data = nullptr;
     other._size = 0;
+    other._deleter = D{};
 }
 
 template<class T, class D> template<class ...Args> Array<T, D>::Array(DirectInitT, std::size_t size, Args&&... args): Array{NoInit, size} {
     for(std::size_t i = 0; i != size; ++i)
-        new(_data + i) T{std::forward<Args>(args)...};
+        Implementation::construct(_data[i], std::forward<Args>(args)...);
 }
 
 template<class T, class D> Array<T, D>::Array(InPlaceInitT, std::initializer_list<T> list): Array{NoInit, list.size()} {
@@ -376,6 +425,7 @@ template<class T, class D> inline T* Array<T, D>::release() {
     T* const data = _data;
     _data = nullptr;
     _size = 0;
+    _deleter = D{};
     return data;
 }
 
@@ -383,6 +433,10 @@ namespace Implementation {
 
 template<class U, class T, class D> struct ArrayViewConverter<U, Array<T, D>> {
     template<class V = U> constexpr static typename std::enable_if<std::is_convertible<T*, V*>::value, ArrayView<U>>::type from(Array<T, D>& other) {
+        static_assert(sizeof(T) == sizeof(U), "types are not compatible");
+        return {&other[0], other.size()};
+    }
+    template<class V = U> constexpr static typename std::enable_if<std::is_convertible<T*, V*>::value, ArrayView<U>>::type from(Array<T, D>&& other) {
         static_assert(sizeof(T) == sizeof(U), "types are not compatible");
         return {&other[0], other.size()};
     }
@@ -413,13 +467,14 @@ template<class T, class D> struct ErasedArrayViewConverter<const Array<T, D>>: A
 namespace Corrade { namespace Containers {
 
 template<std::size_t size_, class T> class StaticArray {
+
     public:
         enum: std::size_t {
             Size = size_
         };
         typedef T Type;
 
-        explicit StaticArray(DefaultInitT): StaticArray{DefaultInit, std::integral_constant<bool, std::is_pod<T>::value>{}} {}
+        explicit StaticArray(DefaultInitT): StaticArray{DefaultInit, std::integral_constant<bool, std::is_standard_layout<T>::value && std::is_trivial<T>::value>{}} {}
 
         explicit StaticArray(ValueInitT): _data{} {}
 
@@ -431,7 +486,7 @@ template<std::size_t size_, class T> class StaticArray {
             static_assert(sizeof...(args) == size_, "Containers::StaticArray: wrong number of initializers");
         }
 
-        explicit StaticArray(): StaticArray{DefaultInit} {}
+        explicit StaticArray(): StaticArray{ValueInit} {}
 
         template<class First, class ...Next, class = typename std::enable_if<std::is_convertible<First&&, T>::value>::type> /*implicit*/ StaticArray(First&& first, Next&&... next): StaticArray{InPlaceInit, std::forward<First>(first), std::forward<Next>(next)...} {}
 
@@ -507,6 +562,7 @@ template<std::size_t size_, class T> class StaticArray {
         template<std::size_t begin_, std::size_t end_> StaticArrayView<end_ - begin_, T> slice() {
             return StaticArrayView<size_, T>(*this).template slice<begin_, end_>();
         }
+
         template<std::size_t begin_, std::size_t end_> StaticArrayView<end_ - begin_, const T> slice() const {
             return StaticArrayView<size_, const T>(*this).template slice<begin_, end_>();
         }
@@ -543,6 +599,7 @@ template<std::size_t size_, class T> class StaticArray {
         template<std::size_t begin_> StaticArrayView<size_ - begin_, T> suffix() {
             return StaticArrayView<size_, T>(*this).template suffix<begin_>();
         }
+
         template<std::size_t begin_> StaticArrayView<size_ - begin_, const T> suffix() const {
             return StaticArrayView<size_, const T>(*this).template suffix<begin_>();
         }
@@ -605,9 +662,8 @@ template<std::size_t size_, class T> constexpr std::size_t arraySize(const Stati
 }
 
 template<std::size_t size_, class T> template<class ...Args> StaticArray<size_, T>::StaticArray(DirectInitT, Args&&... args): StaticArray{NoInit} {
-    for(T& i: _data) {
-        new(&i) T{std::forward<Args>(args)...};
-    }
+    for(T& i: _data)
+        Implementation::construct(i, std::forward<Args>(args)...);
 }
 
 template<std::size_t size_, class T> StaticArray<size_, T>::StaticArray(const StaticArray<size_, T>& other) noexcept(std::is_nothrow_copy_constructible<T>::value): StaticArray{NoInit} {

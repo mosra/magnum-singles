@@ -15,6 +15,22 @@
     -   GitHub project page — https://github.com/mosra/magnum
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    v2020.06-0-gfac6f4da2 (2020-06-27)
+    -   Various fixes for Clang-CL compatibility
+    -   Expanding the APIs to work with Half and long double types
+    -   Magnum::Math::NoInit is now Magnum::NoInit
+    -   Minor changes for faster performance of dot() and cross() in Debug
+    -   Added reflect() and refract() functions
+    -   slerp() / slerpShortestPath() falls back to linear interpolation for
+        quaternions that are close together, instead or always returning the
+        first
+    -   Added Quaternion::toEuler()
+    -   Added transformVector() to DualComplex and DualQuaternion to have the
+        the same set of APIs as with Matrix3 / Matrix4
+    -   Mutable access to Frustum planes
+    -   Fixed implicit conversion of std::pair to Range*D
+    -   New BoolVector[234], 8-/16-bit and half-float vector and matrix
+        convenience typedefs
     v2019.10-0-g8412e8f99 (2019-10-24)
     -   New IsScalar, IsVector, IsIntegral, IsFloatingPoint type traits,
         correct handling of Deg and Rad types in all APIs
@@ -28,20 +44,22 @@
     v2019.01-241-g93686746a (2019-04-03)
     -   Initial release
 
-    Generated from Corrade v2019.10-0-g162d6a7d (2019-10-24),
-        Magnum v2019.10-0-g8412e8f99 (2019-10-24) and
-        Magnum Integration v2019.10 (2019-10-24), 7499 / 9608 LoC
+    Generated from Corrade v2020.06-0-g61d1b58c (2020-06-27),
+        Magnum v2020.06-0-gfac6f4da2 (2020-06-27) and
+        Magnum Integration v2020.06-0-ga6c469d (2020-06-27), 7748 / 9946 LoC
 */
 
 /*
     This file is part of Magnum.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
-                2017, 2018, 2019 Vladimír Vondruš <mosra@centrum.cz>
+                2017, 2018, 2019, 2020 Vladimír Vondruš <mosra@centrum.cz>
     Copyright © 2016 Ashwin Ravichandran <ashwinravichandran24@gmail.com>
-    Copyright © 2016, 2018 Jonathan Hale <squareys@googlemail.com>
+    Copyright © 2016, 2018, 2020 Jonathan Hale <squareys@googlemail.com>
     Copyright © 2017 sigman78 <sigman78@gmail.com>
     Copyright © 2018 Borislav Stanimirov <b.stanimirov@abv.bg>
+    Copyright © 2019 Marco Melorio <m.melorio@icloud.com>
+    Copyright © 2020 Nghia Truong <nghiatruong.vn@gmail.com>
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the "Software"),
@@ -73,7 +91,7 @@
 #include <cstdlib>
 #include <type_traits>
 #include <utility>
-#if (!defined(CORRADE_ASSERT) || !defined(CORRADE_CONSTEXPR_ASSERT) || !defined(CORRADE_INTERNAL_ASSERT_OUTPUT) || !defined(CORRADE_ASSERT_UNREACHABLE)) && !defined(NDEBUG)
+#if (!defined(CORRADE_ASSERT) || !defined(CORRADE_CONSTEXPR_ASSERT) || !defined(CORRADE_INTERNAL_ASSERT_OUTPUT) || !defined(CORRADE_INTERNAL_ASSERT_UNREACHABLE)) && !defined(NDEBUG)
 #include <cassert>
 #endif
 
@@ -91,6 +109,34 @@
 #endif
 #ifdef __ANDROID__
 #define CORRADE_TARGET_ANDROID
+#endif
+
+#ifdef _LIBCPP_VERSION
+#define CORRADE_TARGET_LIBCXX
+#elif defined(_CPPLIB_VER)
+#define CORRADE_TARGET_DINKUMWARE
+#elif defined(__GLIBCXX__)
+#define CORRADE_TARGET_LIBSTDCXX
+#elif defined(__has_include)
+    #if __has_include(<bits/c++config.h>)
+        #include <bits/c++config.h>
+        #ifdef __GLIBCXX__
+        #define CORRADE_TARGET_LIBSTDCXX
+        #endif
+    #endif
+#elif defined(__GNUC__) && !defined(__clang__) && __GNUC__ < 5
+#define CORRADE_TARGET_LIBSTDCXX
+#else
+#endif
+
+#ifdef _MSC_VER
+#define CORRADE_TARGET_MSVC
+#endif
+#if defined(__clang__) && defined(_MSC_VER)
+#define CORRADE_TARGET_CLANG_CL
+#endif
+#if defined(CORRADE_TARGET_MSVC) || (defined(CORRADE_TARGET_ANDROID) && !__LP64__) || (defined(CORRADE_TARGET_EMSCRIPTEN) && __LDBL_DIG__ == __DBL_DIG__)
+#define CORRADE_LONG_DOUBLE_SAME_AS_DOUBLE
 #endif
 
 #ifndef MAGNUM_EXPORT
@@ -199,9 +245,24 @@ namespace Implementation {
 namespace Magnum {
 
 typedef Math::Half Half;
+typedef Math::BoolVector<2> BoolVector2;
+typedef Math::BoolVector<3> BoolVector3;
+typedef Math::BoolVector<4> BoolVector4;
 typedef Math::Vector2<Float> Vector2;
 typedef Math::Vector3<Float> Vector3;
 typedef Math::Vector4<Float> Vector4;
+typedef Math::Vector2<UnsignedByte> Vector2ub;
+typedef Math::Vector3<UnsignedByte> Vector3ub;
+typedef Math::Vector4<UnsignedByte> Vector4ub;
+typedef Math::Vector2<Byte> Vector2b;
+typedef Math::Vector3<Byte> Vector3b;
+typedef Math::Vector4<Byte> Vector4b;
+typedef Math::Vector2<UnsignedShort> Vector2us;
+typedef Math::Vector3<UnsignedShort> Vector3us;
+typedef Math::Vector4<UnsignedShort> Vector4us;
+typedef Math::Vector2<Short> Vector2s;
+typedef Math::Vector3<Short> Vector3s;
+typedef Math::Vector4<Short> Vector4s;
 typedef Math::Vector2<UnsignedInt> Vector2ui;
 typedef Math::Vector3<UnsignedInt> Vector3ui;
 typedef Math::Vector4<UnsignedInt> Vector4ui;
@@ -212,6 +273,8 @@ typedef Math::Color3<Float> Color3;
 typedef Math::Color4<Float> Color4;
 typedef Math::Color3<UnsignedByte> Color3ub;
 typedef Math::Color4<UnsignedByte> Color4ub;
+typedef Math::Color3<UnsignedShort> Color3us;
+typedef Math::Color4<UnsignedShort> Color4us;
 typedef Math::Matrix3<Float> Matrix3;
 typedef Math::Matrix4<Float> Matrix4;
 typedef Math::Matrix2x2<Float> Matrix2x2;
@@ -223,6 +286,24 @@ typedef Math::Matrix2x4<Float> Matrix2x4;
 typedef Math::Matrix4x2<Float> Matrix4x2;
 typedef Math::Matrix3x4<Float> Matrix3x4;
 typedef Math::Matrix4x3<Float> Matrix4x3;
+typedef Math::Matrix2x2<Byte> Matrix2x2b;
+typedef Math::Matrix2x3<Byte> Matrix2x3b;
+typedef Math::Matrix2x4<Byte> Matrix2x4b;
+typedef Math::Matrix3x2<Byte> Matrix3x2b;
+typedef Math::Matrix3x3<Byte> Matrix3x3b;
+typedef Math::Matrix3x4<Byte> Matrix3x4b;
+typedef Math::Matrix4x2<Byte> Matrix4x2b;
+typedef Math::Matrix4x3<Byte> Matrix4x3b;
+typedef Math::Matrix4x4<Byte> Matrix4x4b;
+typedef Math::Matrix2x2<Short> Matrix2x2s;
+typedef Math::Matrix2x3<Short> Matrix2x3s;
+typedef Math::Matrix2x4<Short> Matrix2x4s;
+typedef Math::Matrix3x2<Short> Matrix3x2s;
+typedef Math::Matrix3x3<Short> Matrix3x3s;
+typedef Math::Matrix3x4<Short> Matrix3x4s;
+typedef Math::Matrix4x2<Short> Matrix4x2s;
+typedef Math::Matrix4x3<Short> Matrix4x3s;
+typedef Math::Matrix4x4<Short> Matrix4x4s;
 typedef Math::QuadraticBezier2D<Float> QuadraticBezier2D;
 typedef Math::QuadraticBezier3D<Float> QuadraticBezier3D;
 typedef Math::CubicBezier2D<Float> CubicBezier2D;
@@ -246,6 +327,20 @@ typedef Math::Range1D<Int> Range1Di;
 typedef Math::Range2D<Int> Range2Di;
 typedef Math::Range3D<Int> Range3Di;
 typedef Math::Frustum<Float> Frustum;
+typedef Math::Vector2<Half> Vector2h;
+typedef Math::Vector3<Half> Vector3h;
+typedef Math::Vector4<Half> Vector4h;
+typedef Math::Color3<Half> Color3h;
+typedef Math::Color4<Half> Color4h;
+typedef Math::Matrix2x2<Half> Matrix2x2h;
+typedef Math::Matrix2x3<Half> Matrix2x3h;
+typedef Math::Matrix2x4<Half> Matrix2x4h;
+typedef Math::Matrix3x2<Half> Matrix3x2h;
+typedef Math::Matrix3x3<Half> Matrix3x3h;
+typedef Math::Matrix3x4<Half> Matrix3x4h;
+typedef Math::Matrix4x2<Half> Matrix4x2h;
+typedef Math::Matrix4x3<Half> Matrix4x3h;
+typedef Math::Matrix4x4<Half> Matrix4x4h;
 typedef Math::Vector2<Double> Vector2d;
 typedef Math::Vector3<Double> Vector3d;
 typedef Math::Vector4<Double> Vector4d;
@@ -309,8 +404,20 @@ template<> struct Constants<Double> {
     static constexpr Double sqrt3()     { return 1.7320508075688773; }
     static constexpr Double sqrtHalf()  { return 0.7071067811865475; }
 
-    static constexpr Double nan()   { return Double(NAN); }
-    static constexpr Double inf()   { return HUGE_VAL; }
+    static constexpr Double nan() {
+        #ifdef CORRADE_TARGET_CLANG_CL
+        return __builtin_nan("0");
+        #else
+        return Double(NAN);
+        #endif
+    }
+    static constexpr Double inf() {
+        #if defined(CORRADE_TARGET_CLANG_CL) && __clang_major__ < 9
+        return __builtin_huge_val();
+        #else
+        return HUGE_VAL;
+        #endif
+    }
 };
 template<> struct Constants<Float> {
     Constants() = delete;
@@ -324,8 +431,20 @@ template<> struct Constants<Float> {
     static constexpr Float sqrt3()      { return 1.732050808f; }
     static constexpr Float sqrtHalf()   { return 0.707106781f; }
 
-    static constexpr Float nan()    { return NAN; }
-    static constexpr Float inf()    { return HUGE_VALF; }
+    static constexpr Float nan() {
+        #ifdef CORRADE_TARGET_CLANG_CL
+        return __builtin_nanf("0");
+        #else
+        return NAN;
+        #endif
+    }
+    static constexpr Float inf() {
+        #if defined(CORRADE_TARGET_CLANG_CL) && __clang_major__ < 9
+        return __builtin_huge_valf();
+        #else
+        return HUGE_VALF;
+        #endif
+    }
 };
 
 }}
@@ -333,24 +452,6 @@ template<> struct Constants<Float> {
 #endif
 #ifndef Magnum_Math_TypeTraits_h
 #define Magnum_Math_TypeTraits_h
-
-#ifndef FLOAT_EQUALITY_PRECISION
-#define FLOAT_EQUALITY_PRECISION 1.0e-5f
-#endif
-
-#ifndef DOUBLE_EQUALITY_PRECISION
-#define DOUBLE_EQUALITY_PRECISION 1.0e-14
-#endif
-
-#ifndef CORRADE_TARGET_EMSCRIPTEN
-#ifndef LONG_DOUBLE_EQUALITY_PRECISION
-#if !defined(_MSC_VER) && (!defined(CORRADE_TARGET_ANDROID) || __LP64__)
-#define LONG_DOUBLE_EQUALITY_PRECISION 1.0e-17l
-#else
-#define LONG_DOUBLE_EQUALITY_PRECISION 1.0e-14
-#endif
-#endif
-#endif
 
 namespace Magnum { namespace Math {
 
@@ -370,6 +471,7 @@ template<> struct IsScalar<unsigned long>: std::true_type {};
 template<> struct IsScalar<long long>: std::true_type {};
 template<> struct IsScalar<unsigned long long>: std::true_type {};
 template<> struct IsScalar<float>: std::true_type {};
+template<> struct IsScalar<Half>: std::true_type {};
 template<> struct IsScalar<double>: std::true_type {};
 #ifndef CORRADE_TARGET_EMSCRIPTEN
 template<> struct IsScalar<long double>: std::true_type {};
@@ -416,6 +518,7 @@ template<class T> struct IsFloatingPoint
     {};
 
 template<> struct IsFloatingPoint<Float>: std::true_type {};
+template<> struct IsFloatingPoint<Half>: std::true_type {};
 template<> struct IsFloatingPoint<Double>: std::true_type {};
 #ifndef CORRADE_TARGET_EMSCRIPTEN
 template<> struct IsFloatingPoint<long double>: std::true_type {};
@@ -509,10 +612,9 @@ namespace Implementation {
     _c(Long)
     #endif
     _c(Float)
+    _c(Half)
     _c(Double)
-    #ifndef CORRADE_TARGET_EMSCRIPTEN
     _c(long double)
-    #endif
     #undef _c
 
     template<class T> struct TypeTraitsIntegral: TypeTraitsDefault<T>, TypeTraitsName<T> {
@@ -585,20 +687,25 @@ template<class T> bool TypeTraitsFloatingPoint<T>::equalsZero(const T a, const T
 template<> struct TypeTraits<Float>: Implementation::TypeTraitsFloatingPoint<Float> {
     typedef Float FloatingPointType;
 
-    constexpr static Float epsilon() { return FLOAT_EQUALITY_PRECISION; }
+    constexpr static Float epsilon() { return 1.0e-5f; }
+};
+template<> struct TypeTraits<Half>: Implementation::TypeTraitsName<Half>, Implementation::TypeTraitsDefault<Half> {
+    typedef Half FloatingPointType;
 };
 template<> struct TypeTraits<Double>: Implementation::TypeTraitsFloatingPoint<Double> {
     typedef Double FloatingPointType;
 
-    constexpr static Double epsilon() { return DOUBLE_EQUALITY_PRECISION; }
+    constexpr static Double epsilon() { return 1.0e-14; }
 };
-#ifndef CORRADE_TARGET_EMSCRIPTEN
 template<> struct TypeTraits<long double>: Implementation::TypeTraitsFloatingPoint<long double> {
     typedef long double FloatingPointType;
 
-    constexpr static long double epsilon() { return LONG_DOUBLE_EQUALITY_PRECISION; }
+    #ifndef CORRADE_LONG_DOUBLE_SAME_AS_DOUBLE
+    constexpr static long double epsilon() { return 1.0e-17l; }
+    #else
+    constexpr static long double epsilon() { return 1.0e-14l; }
+    #endif
 };
-#endif
 
 namespace Implementation {
 
@@ -661,12 +768,29 @@ constexpr InPlaceInitT InPlaceInit{InPlaceInitT::Init{}};
 }}
 
 #endif
+#ifndef Magnum_Tags_h
+#define Magnum_Tags_h
+
+namespace Magnum {
+
+typedef Corrade::Containers::NoInitT NoInitT;
+
+struct NoCreateT {
+    struct Init{};
+    constexpr explicit NoCreateT(Init) {}
+};
+
+using Corrade::Containers::NoInit;
+
+constexpr NoCreateT NoCreate{NoCreateT::Init{}};
+
+}
+
+#endif
 #ifndef Magnum_Math_Tags_h
 #define Magnum_Math_Tags_h
 
 namespace Magnum { namespace Math {
-
-typedef Corrade::Containers::NoInitT NoInitT;
 
 struct ZeroInitT {
     struct Init{};
@@ -677,8 +801,6 @@ struct IdentityInitT {
     struct Init{};
     constexpr explicit IdentityInitT(Init) {}
 };
-
-using Corrade::Containers::NoInit;
 
 constexpr ZeroInitT ZeroInit{ZeroInitT::Init{}};
 
@@ -702,7 +824,7 @@ template<template<class> class Derived, class T> class Unit {
 
         constexpr explicit Unit(ZeroInitT) noexcept: _value(T(0)) {}
 
-        explicit Unit(NoInitT) noexcept {}
+        explicit Unit(Magnum::NoInitT) noexcept {}
 
         constexpr explicit Unit(T value) noexcept: _value(value) {}
 
@@ -802,7 +924,7 @@ template<class T> class Deg: public Unit<Deg, T> {
 
         constexpr explicit Deg(ZeroInitT) noexcept: Unit<Math::Deg, T>{ZeroInit} {}
 
-        explicit Deg(NoInitT) noexcept: Unit<Math::Deg, T>{NoInit} {}
+        explicit Deg(Magnum::NoInitT) noexcept: Unit<Math::Deg, T>{Magnum::NoInit} {}
 
         constexpr explicit Deg(T value) noexcept: Unit<Math::Deg, T>(value) {}
 
@@ -827,7 +949,7 @@ template<class T> class Rad: public Unit<Rad, T> {
 
         constexpr explicit Rad(ZeroInitT) noexcept: Unit<Math::Rad, T>{ZeroInit} {}
 
-        explicit Rad(NoInitT) noexcept: Unit<Math::Rad, T>{NoInit} {}
+        explicit Rad(Magnum::NoInitT) noexcept: Unit<Math::Rad, T>{Magnum::NoInit} {}
 
         constexpr explicit Rad(T value) noexcept: Unit<Math::Rad, T>(value) {}
 
@@ -884,17 +1006,17 @@ namespace Corrade { namespace Utility {
 #endif
 #endif
 
-#ifndef CORRADE_ASSERT_UNREACHABLE
+#ifndef CORRADE_INTERNAL_ASSERT_UNREACHABLE
 #ifdef NDEBUG
 #ifdef __GNUC__
-#define CORRADE_ASSERT_UNREACHABLE() __builtin_unreachable()
+#define CORRADE_INTERNAL_ASSERT_UNREACHABLE() __builtin_unreachable()
 #elif defined(_MSC_VER)
-#define CORRADE_ASSERT_UNREACHABLE() __assume(0)
+#define CORRADE_INTERNAL_ASSERT_UNREACHABLE() __assume(0)
 #else
-#define CORRADE_ASSERT_UNREACHABLE() std::abort()
+#define CORRADE_INTERNAL_ASSERT_UNREACHABLE() std::abort()
 #endif
 #else
-#define CORRADE_ASSERT_UNREACHABLE() assert(!"unreachable code")
+#define CORRADE_INTERNAL_ASSERT_UNREACHABLE() assert(!"unreachable code")
 #endif
 #endif
 #ifndef Magnum_Math_BoolVector_h
@@ -930,7 +1052,7 @@ template<std::size_t size> class BoolVector {
 
         constexpr explicit BoolVector(ZeroInitT) noexcept: _data{} {}
 
-        explicit BoolVector(NoInitT) noexcept {}
+        explicit BoolVector(Magnum::NoInitT) noexcept {}
 
         template<class ...T, class U = typename std::enable_if<sizeof...(T)+1 == DataSize, bool>::type> constexpr /*implicit*/ BoolVector(UnsignedByte first, T... next) noexcept: _data{first, UnsignedByte(next)...} {}
 
@@ -1058,7 +1180,7 @@ template<std::size_t size> inline bool BoolVector<size>::none() const {
 }
 
 template<std::size_t size> inline BoolVector<size> BoolVector<size>::operator~() const {
-    BoolVector<size> out{NoInit};
+    BoolVector<size> out{Magnum::NoInit};
 
     for(std::size_t i = 0; i != DataSize; ++i)
         out._data[i] = ~_data[i];
@@ -1104,6 +1226,9 @@ template<class T> constexpr typename std::enable_if<IsScalar<T>::value, T>::type
 template<class T> constexpr typename std::enable_if<IsScalar<T>::value, T>::type max(T value, T max) {
     return value < max ? max : value;
 }
+template<class T> constexpr typename std::enable_if<IsScalar<T>::value, T>::type clamp(T value, T min, T max) {
+    return Math::min(Math::max(value, min), max);
+}
 
 namespace Implementation {
     template<std::size_t, class, class> struct VectorConverter;
@@ -1130,7 +1255,10 @@ namespace Implementation {
 }
 
 template<std::size_t size, class T> inline T dot(const Vector<size, T>& a, const Vector<size, T>& b) {
-    return (a*b).sum();
+    T out{};
+    for(std::size_t i = 0; i != size; ++i)
+        out += a._data[i]*b._data[i];
+    return out;
 }
 
 template<std::size_t size, class FloatingPoint> inline
@@ -1138,7 +1266,7 @@ typename std::enable_if<std::is_floating_point<FloatingPoint>::value, Rad<Floati
 angle(const Vector<size, FloatingPoint>& normalizedA, const Vector<size, FloatingPoint>& normalizedB) {
     CORRADE_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
         "Math::angle(): vectors" << normalizedA << "and" << normalizedB << "are not normalized", {});
-    return Rad<FloatingPoint>(std::acos(dot(normalizedA, normalizedB)));
+    return Rad<FloatingPoint>(std::acos(clamp(dot(normalizedA, normalizedB), FloatingPoint(-1), FloatingPoint(1))));
 }
 
 template<std::size_t size, class T> class Vector {
@@ -1158,7 +1286,7 @@ template<std::size_t size, class T> class Vector {
             return *reinterpret_cast<const Vector<size, T>*>(data);
         }
 
-        template<std::size_t otherSize> constexpr static Vector<size, T> pad(const Vector<otherSize, T>& a, T value = T(0)) {
+        template<std::size_t otherSize> constexpr static Vector<size, T> pad(const Vector<otherSize, T>& a, T value = T()) {
             return padInternal<otherSize>(typename Implementation::GenerateSequence<size>::Type(), a, value);
         }
 
@@ -1166,7 +1294,7 @@ template<std::size_t size, class T> class Vector {
 
         constexpr explicit Vector(ZeroInitT) noexcept: _data{} {}
 
-        explicit Vector(NoInitT) noexcept {}
+        explicit Vector(Magnum::NoInitT) noexcept {}
 
         template<class ...U, class V = typename std::enable_if<sizeof...(U)+1 == size, T>::type> constexpr /*implicit*/ Vector(T first, U... next) noexcept: _data{first, next...} {}
 
@@ -1286,7 +1414,7 @@ template<std::size_t size, class T> class Vector {
 
         T dot() const { return Math::dot(*this, *this); }
 
-        T length() const { return std::sqrt(dot()); }
+        T length() const { return T(std::sqrt(dot())); }
 
         template<class U = T> typename std::enable_if<std::is_floating_point<U>::value, T>::type
         lengthInverted() const { return T(1)/length(); }
@@ -1335,6 +1463,8 @@ template<std::size_t size, class T> class Vector {
 
         template<std::size_t size_, class T_> friend BoolVector<size_> equal(const Vector<size_, T_>&, const Vector<size_, T_>&);
         template<std::size_t size_, class T_> friend BoolVector<size_> notEqual(const Vector<size_, T_>&, const Vector<size_, T_>&);
+
+        template<std::size_t size_, class U> friend U dot(const Vector<size_, U>&, const Vector<size_, U>&);
 
         template<class U, std::size_t ...sequence> constexpr explicit Vector(Implementation::Sequence<sequence...>, const Vector<size, U>& vector) noexcept: _data{T(vector._data[sequence])...} {}
 
@@ -1602,7 +1732,7 @@ operator/(const Vector<size, Integral>& a, const Vector<size, FloatingPoint>& b)
     static const Type<T>& from(const T* data) {                             \
         return *reinterpret_cast<const Type<T>*>(data);                     \
     }                                                                       \
-    template<std::size_t otherSize> constexpr static Type<T> pad(const Math::Vector<otherSize, T>& a, T value = T(0)) { \
+    template<std::size_t otherSize> constexpr static Type<T> pad(const Math::Vector<otherSize, T>& a, T value = T()) { \
         return Math::Vector<size, T>::pad(a, value);                        \
     }                                                                       \
                                                                             \
@@ -1936,7 +2066,7 @@ template<UnsignedInt order, UnsignedInt dimensions, class T> class Bezier {
 
         constexpr explicit Bezier(ZeroInitT) noexcept: Bezier<order, dimensions, T>{typename Implementation::GenerateSequence<order + 1>::Type{}, ZeroInit} {}
 
-        explicit Bezier(NoInitT) noexcept: Bezier<order, dimensions, T>{typename Implementation::GenerateSequence<order + 1>::Type{}, NoInit} {}
+        explicit Bezier(Magnum::NoInitT) noexcept: Bezier<order, dimensions, T>{typename Implementation::GenerateSequence<order + 1>::Type{}, Magnum::NoInit} {}
 
         template<typename... U> constexpr /*implicit*/ Bezier(const Vector<dimensions, T>& first, U... next) noexcept: _data{first, next...} {
             static_assert(sizeof...(U) + 1 == order + 1, "Wrong number of arguments");
@@ -2090,7 +2220,7 @@ template<std::size_t cols, std::size_t rows, class T> class RectangularMatrix {
 
         constexpr explicit RectangularMatrix(ZeroInitT) noexcept: RectangularMatrix<cols, rows, T>{typename Implementation::GenerateSequence<cols>::Type{}, ZeroInit} {}
 
-        explicit RectangularMatrix(NoInitT) noexcept: RectangularMatrix<cols, rows, T>{typename Implementation::GenerateSequence<cols>::Type{}, NoInit} {}
+        explicit RectangularMatrix(Magnum::NoInitT) noexcept: RectangularMatrix<cols, rows, T>{typename Implementation::GenerateSequence<cols>::Type{}, Magnum::NoInit} {}
 
         template<class ...U> constexpr /*implicit*/ RectangularMatrix(const Vector<rows, T>& first, const U&... next) noexcept: _data{first, next...} {
             static_assert(sizeof...(next)+1 == cols, "Improper number of arguments passed to RectangularMatrix constructor");
@@ -2276,7 +2406,7 @@ template<std::size_t cols, std::size_t rows, class T> inline RectangularMatrix<c
     typename std::common_type<T>::type
     scalar, const RectangularMatrix<cols, rows, T>& matrix)
 {
-    RectangularMatrix<cols, rows, T> out{NoInit};
+    RectangularMatrix<cols, rows, T> out{Magnum::NoInit};
 
     for(std::size_t i = 0; i != cols; ++i)
         out[i] = scalar/matrix[i];
@@ -2405,7 +2535,7 @@ template<std::size_t cols, std::size_t rows, class T> template<std::size_t size>
 }
 
 template<std::size_t cols, std::size_t rows, class T> inline RectangularMatrix<rows, cols, T> RectangularMatrix<cols, rows, T>::transposed() const {
-    RectangularMatrix<rows, cols, T> out{NoInit};
+    RectangularMatrix<rows, cols, T> out{Magnum::NoInit};
 
     for(std::size_t col = 0; col != cols; ++col)
         for(std::size_t row = 0; row != rows; ++row)
@@ -2469,7 +2599,7 @@ template<std::size_t size, class T> class Matrix: public RectangularMatrix<size,
 
         constexpr explicit Matrix(ZeroInitT) noexcept: RectangularMatrix<size, size, T>{ZeroInit} {}
 
-        constexpr explicit Matrix(NoInitT) noexcept: RectangularMatrix<size, size, T>{NoInit} {}
+        constexpr explicit Matrix(Magnum::NoInitT) noexcept: RectangularMatrix<size, size, T>{Magnum::NoInit} {}
 
         template<class ...U> constexpr /*implicit*/ Matrix(const Vector<size, T>& first, const U&... next) noexcept: RectangularMatrix<size, size, T>(first, next...) {}
 
@@ -2645,7 +2775,7 @@ template<std::size_t size, class T> bool Matrix<size, T>::isOrthogonal() const {
 }
 
 template<std::size_t size, class T> Matrix<size-1, T> Matrix<size, T>::ij(const std::size_t skipCol, const std::size_t skipRow) const {
-    Matrix<size-1, T> out{NoInit};
+    Matrix<size-1, T> out{Magnum::NoInit};
 
     for(std::size_t col = 0; col != size-1; ++col)
         for(std::size_t row = 0; row != size-1; ++row)
@@ -2661,7 +2791,7 @@ template<std::size_t size, class T> T Matrix<size, T>::cofactor(std::size_t col,
 }
 
 template<std::size_t size, class T> Matrix<size, T> Matrix<size, T>::comatrix() const {
-    Matrix<size, T> out{NoInit};
+    Matrix<size, T> out{Magnum::NoInit};
 
     for(std::size_t col = 0; col != size; ++col)
         for(std::size_t row = 0; row != size; ++row)
@@ -2671,7 +2801,7 @@ template<std::size_t size, class T> Matrix<size, T> Matrix<size, T>::comatrix() 
 }
 
 template<std::size_t size, class T> Matrix<size, T> Matrix<size, T>::adjugate() const {
-    Matrix<size, T> out{NoInit};
+    Matrix<size, T> out{Magnum::NoInit};
 
     for(std::size_t col = 0; col != size; ++col)
         for(std::size_t row = 0; row != size; ++row)
@@ -2781,14 +2911,14 @@ template<std::size_t size, class T> inline BoolVector<size> isNan(const Vector<s
 template<class T> constexpr typename std::enable_if<IsScalar<T>::value, T>::type min(T value, T min);
 
 template<std::size_t size, class T> inline Vector<size, T> min(const Vector<size, T>& value, const Vector<size, T>& min) {
-    Vector<size, T> out{NoInit};
+    Vector<size, T> out{Magnum::NoInit};
     for(std::size_t i = 0; i != size; ++i)
         out[i] = Math::min(value[i], min[i]);
     return out;
 }
 
 template<std::size_t size, class T> inline Vector<size, T> min(const Vector<size, T>& value, T min) {
-    Vector<size, T> out{NoInit};
+    Vector<size, T> out{Magnum::NoInit};
     for(std::size_t i = 0; i != size; ++i)
         out[i] = Math::min(value[i], min);
     return out;
@@ -2797,14 +2927,14 @@ template<std::size_t size, class T> inline Vector<size, T> min(const Vector<size
 template<class T> constexpr typename std::enable_if<IsScalar<T>::value, T>::type max(T a, T b);
 
 template<std::size_t size, class T> Vector<size, T> max(const Vector<size, T>& value, const Vector<size, T>& max) {
-    Vector<size, T> out{NoInit};
+    Vector<size, T> out{Magnum::NoInit};
     for(std::size_t i = 0; i != size; ++i)
         out[i] = Math::max(value[i], max[i]);
     return out;
 }
 
 template<std::size_t size, class T> inline Vector<size, T> max(const Vector<size, T>& value, T max) {
-    Vector<size, T> out{NoInit};
+    Vector<size, T> out{Magnum::NoInit};
     for(std::size_t i = 0; i != size; ++i)
         out[i] = Math::max(value[i], max);
     return out;
@@ -2822,19 +2952,17 @@ template<std::size_t size, class T> inline std::pair<Vector<size, T>, Vector<siz
     return out;
 }
 
-template<class T> inline typename std::enable_if<IsScalar<T>::value, T>::type clamp(T value, T min, T max) {
-    return Math::min(Math::max(value, min), max);
-}
+template<class T> constexpr typename std::enable_if<IsScalar<T>::value, T>::type clamp(T value, T min, T max);
 
 template<std::size_t size, class T> inline Vector<size, T> clamp(const Vector<size, T>& value, const Vector<size, T>& min, const Vector<size, T>& max) {
-    Vector<size, T> out{NoInit};
+    Vector<size, T> out{Magnum::NoInit};
     for(std::size_t i = 0; i != size; ++i)
         out[i] = Math::clamp(value[i], min[i], max[i]);
     return out;
 }
 
 template<std::size_t size, class T> inline Vector<size, T> clamp(const Vector<size, T>& value, T min, T max) {
-    Vector<size, T> out{NoInit};
+    Vector<size, T> out{Magnum::NoInit};
     for(std::size_t i = 0; i != size; ++i)
         out[i] = Math::clamp(value[i], min, max);
     return out;
@@ -2847,7 +2975,7 @@ template<class T> inline typename std::enable_if<IsScalar<T>::value, T>::type si
 }
 
 template<std::size_t size, class T> inline Vector<size, T> sign(const Vector<size, T>& a) {
-    Vector<size, T> out{NoInit};
+    Vector<size, T> out{Magnum::NoInit};
     for(std::size_t i = 0; i != size; ++i)
         out[i] = Math::sign(a[i]);
     return out;
@@ -2858,7 +2986,7 @@ template<class T> inline typename std::enable_if<IsScalar<T>::value, T>::type ab
 }
 
 template<std::size_t size, class T> inline Vector<size, T> abs(const Vector<size, T>& a) {
-    Vector<size, T> out{NoInit};
+    Vector<size, T> out{Magnum::NoInit};
     for(std::size_t i = 0; i != size; ++i)
         out[i] = Math::abs(a[i]);
     return out;
@@ -2869,7 +2997,7 @@ template<class T> inline typename std::enable_if<IsScalar<T>::value, T>::type fl
 }
 
 template<std::size_t size, class T> inline Vector<size, T> floor(const Vector<size, T>& a) {
-    Vector<size, T> out{NoInit};
+    Vector<size, T> out{Magnum::NoInit};
     for(std::size_t i = 0; i != size; ++i)
         out[i] = Math::floor(a[i]);
     return out;
@@ -2880,7 +3008,7 @@ template<class T> inline typename std::enable_if<IsScalar<T>::value, T>::type ro
 }
 
 template<std::size_t size, class T> inline Vector<size, T> round(const Vector<size, T>& a) {
-    Vector<size, T> out{NoInit};
+    Vector<size, T> out{Magnum::NoInit};
     for(std::size_t i = 0; i != size; ++i)
         out[i] = Math::round(a[i]);
     return out;
@@ -2891,7 +3019,7 @@ template<class T> inline typename std::enable_if<IsScalar<T>::value, T>::type ce
 }
 
 template<std::size_t size, class T> inline Vector<size, T> ceil(const Vector<size, T>& a) {
-    Vector<size, T> out{NoInit};
+    Vector<size, T> out{Magnum::NoInit};
     for(std::size_t i = 0; i != size; ++i)
         out[i] = Math::ceil(a[i]);
     return out;
@@ -2908,7 +3036,7 @@ template<class T> inline T lerp(const T& a, const T& b, bool t) {
 }
 
 template<std::size_t size, class T> inline Vector<size, T> lerp(const Vector<size, T>& a, const Vector<size, T>& b, const BoolVector<size>& t) {
-    Vector<size, T> out{NoInit};
+    Vector<size, T> out{Magnum::NoInit};
     for(std::size_t i = 0; i != size; ++i)
         out[i] = t[i] ? b[i] : a[i];
     return out;
@@ -2961,7 +3089,7 @@ template<UnsignedInt exponent, class T> constexpr typename std::enable_if<IsScal
 }
 
 template<UnsignedInt exponent, std::size_t size, class T> inline Vector<size, T> pow(const Vector<size, T>& base) {
-    Vector<size, T> out{NoInit};
+    Vector<size, T> out{Magnum::NoInit};
     for(std::size_t i = 0; i != size; ++i)
         out[i] = Math::pow<exponent>(base[i]);
     return out;
@@ -2973,7 +3101,7 @@ template<class T> inline typename std::enable_if<IsScalar<T>::value, T>::type po
 }
 
 template<std::size_t size, class T> inline Vector<size, T> pow(const Vector<size, T>& base, T exponent) {
-    Vector<size, T> out{NoInit};
+    Vector<size, T> out{Magnum::NoInit};
     for(std::size_t i = 0; i != size; ++i)
         out[i] = Math::pow(base[i], exponent);
     return out;
@@ -2985,7 +3113,7 @@ template<class T> inline typename std::enable_if<IsScalar<T>::value, T>::type sq
 }
 
 template<std::size_t size, class T> inline Vector<size, T> sqrt(const Vector<size, T>& a) {
-    Vector<size, T> out{NoInit};
+    Vector<size, T> out{Magnum::NoInit};
     for(std::size_t i = 0; i != size; ++i)
         out[i] = Math::sqrt(a[i]);
     return out;
@@ -3000,6 +3128,21 @@ template<std::size_t size, class T> inline Vector<size, T> sqrtInverted(const Ve
     return Vector<size, T>(T(1))/Math::sqrt(a);
 }
 
+template<std::size_t size, class T> inline Vector<size, T> reflect(const Vector<size, T>& vector, const Vector<size, T>& normal) {
+    CORRADE_ASSERT(normal.isNormalized(),
+        "Math::reflect(): normal" << normal << "is not normalized", {});
+    return vector - T(2.0)*dot(vector, normal)*normal;
+}
+
+template<std::size_t size, class T> inline Vector<size, T> refract(const Vector<size, T>& vector, const Vector<size, T>& normal, T eta) {
+    CORRADE_ASSERT(vector.isNormalized() && normal.isNormalized(),
+        "Math::refract(): vectors" << vector << "and" << normal << "are not normalized", {});
+    const T dot = Math::dot(vector, normal);
+    const T k  = T(1.0) - eta*eta*(T(1.0) - dot*dot);
+    if(k < T(0.0)) return {};
+    return eta*vector - (eta*dot + std::sqrt(k))*normal;
+}
+
 }}
 
 #endif
@@ -3010,7 +3153,7 @@ namespace Magnum { namespace Math {
 
 namespace Implementation {
 
-template<class T, UnsignedInt bits = sizeof(T)*8> inline constexpr T bitMax() {
+template<class T, UnsignedInt bits = sizeof(T)*8> constexpr T bitMax() {
     return T(typename std::make_unsigned<T>::type(~T{}) >> (sizeof(T)*8 - (std::is_signed<T>::value ? bits - 1 : bits)));
 }
 
@@ -3033,7 +3176,7 @@ template<class FloatingPoint, class Integral, UnsignedInt bits = sizeof(Integral
 template<class FloatingPoint, std::size_t size, class Integral, UnsignedInt bits = sizeof(Integral)*8> FloatingPoint unpack(const Vector<size, Integral>& value) {
     static_assert(FloatingPoint::Size == size,
         "return vector type should have the same size as input vector type");
-    FloatingPoint out{NoInit};
+    FloatingPoint out{Magnum::NoInit};
     for(std::size_t i = 0; i != size; ++i)
         out[i] = unpack<typename FloatingPoint::Type, Integral, bits>(value[i]);
     return out;
@@ -3056,7 +3199,7 @@ template<class Integral, class FloatingPoint, UnsignedInt bits = sizeof(Integral
 template<class Integral, std::size_t size, class FloatingPoint, UnsignedInt bits = sizeof(typename Integral::Type)*8> Integral pack(const Vector<size, FloatingPoint>& value) {
     static_assert(Integral::Size == size,
         "return vector type should have the same size as input vector type");
-    Integral out{NoInit};
+    Integral out{Magnum::NoInit};
     for(std::size_t i = 0; i != size; ++i)
         out[i] = pack<typename Integral::Type, FloatingPoint, bits>(value[i]);
     return out;
@@ -3072,7 +3215,7 @@ template<class Integral, UnsignedInt bits, std::size_t size, class FloatingPoint
 MAGNUM_EXPORT UnsignedShort packHalf(Float value);
 
 template<std::size_t size> Vector<size, UnsignedShort> packHalf(const Vector<size, Float>& value) {
-    Vector<size, UnsignedShort> out{NoInit};
+    Vector<size, UnsignedShort> out{Magnum::NoInit};
     for(std::size_t i = 0; i != size; ++i)
         out[i] = packHalf(value[i]);
     return out;
@@ -3081,7 +3224,7 @@ template<std::size_t size> Vector<size, UnsignedShort> packHalf(const Vector<siz
 MAGNUM_EXPORT Float unpackHalf(UnsignedShort value);
 
 template<std::size_t size> Vector<size, Float> unpackHalf(const Vector<size, UnsignedShort>& value) {
-    Vector<size, Float> out{NoInit};
+    Vector<size, Float> out{Magnum::NoInit};
     for(std::size_t i = 0; i != size; ++i)
         out[i] = unpackHalf(value[i]);
     return out;
@@ -3096,7 +3239,7 @@ template<std::size_t size> Vector<size, Float> unpackHalf(const Vector<size, Uns
 namespace Magnum { namespace Math {
 
 template<class T> inline T cross(const Vector2<T>& a, const Vector2<T>& b) {
-    return dot(a.perpendicular(), b);
+    return a._data[0]*b._data[1] - a._data[1]*b._data[0];
 }
 
 template<class T> class Vector2: public Vector<2, T> {
@@ -3113,7 +3256,7 @@ template<class T> class Vector2: public Vector<2, T> {
 
         constexpr explicit Vector2(ZeroInitT) noexcept: Vector<2, T>{ZeroInit} {}
 
-        explicit Vector2(NoInitT) noexcept: Vector<2, T>{NoInit} {}
+        explicit Vector2(Magnum::NoInitT) noexcept: Vector<2, T>{Magnum::NoInit} {}
 
         constexpr explicit Vector2(T value) noexcept: Vector<2, T>(value) {}
 
@@ -3144,6 +3287,9 @@ template<class T> class Vector2: public Vector<2, T> {
         aspectRatio() const { return x()/y(); }
 
         MAGNUM_VECTOR_SUBCLASS_IMPLEMENTATION(2, Vector2)
+
+    private:
+        template<class U> friend U cross(const Vector2<U>&, const Vector2<U>&);
 };
 
 MAGNUM_VECTORn_OPERATOR_IMPLEMENTATION(2, Vector2)
@@ -3158,100 +3304,17 @@ namespace Implementation {
 }}
 
 #endif
-#ifndef Magnum_Math_Swizzle_h
-#define Magnum_Math_Swizzle_h
-
-namespace Magnum { namespace Math {
-
-namespace Implementation {
-    template<std::size_t size, std::size_t position> struct GatherComponentAt {
-        static_assert(size > position, "numeric swizzle parameter out of range of gather vector, use either xyzw/rgba/0/1 letters or small enough numbers");
-
-        template<class T> constexpr static T value(const Math::Vector<size, T>& vector) {
-            return vector._data[position];
-        }
-    };
-
-    template<std::size_t size, char component> struct GatherComponent: GatherComponentAt<size, component> {};
-    template<std::size_t size> struct GatherComponent<size, 'x'>: public GatherComponentAt<size, 0> {};
-    template<std::size_t size> struct GatherComponent<size, 'y'>: public GatherComponentAt<size, 1> {};
-    template<std::size_t size> struct GatherComponent<size, 'z'>: public GatherComponentAt<size, 2> {};
-    template<std::size_t size> struct GatherComponent<size, 'w'>: public GatherComponentAt<size, 3> {};
-    template<std::size_t size> struct GatherComponent<size, 'r'>: public GatherComponentAt<size, 0> {};
-    template<std::size_t size> struct GatherComponent<size, 'g'>: public GatherComponentAt<size, 1> {};
-    template<std::size_t size> struct GatherComponent<size, 'b'>: public GatherComponentAt<size, 2> {};
-    template<std::size_t size> struct GatherComponent<size, 'a'>: public GatherComponentAt<size, 3> {};
-    template<std::size_t size> struct GatherComponent<size, '0'> {
-        template<class T> constexpr static T value(const Math::Vector<size, T>&) { return T(0); }
-    };
-    template<std::size_t size> struct GatherComponent<size, '1'> {
-        template<class T> constexpr static T value(const Math::Vector<size, T>&) { return T(1); }
-    };
-
-    template<std::size_t size, class T> struct TypeForSize {
-        typedef Math::Vector<size, typename T::Type> Type;
-    };
-
-    template<std::size_t size, std::size_t i, bool = true> struct ScatterComponentOr {
-        template<class T> constexpr static T value(const Math::Vector<size, T>&, const T& value) {
-            return value;
-        }
-    };
-    template<std::size_t size, std::size_t i> struct ScatterComponentOr<size, i, false> {
-        template<class T> constexpr static T value(const Math::Vector<size, T>& vector, const T&) {
-            return vector._data[i];
-        }
-    };
-    template<std::size_t size, char component, std::size_t i> struct ScatterComponent: ScatterComponentOr<size, i, component == i> {
-        static_assert(component == 'x' || component == 'r' ||
-                    ((component == 'y' || component == 'g') && size > 1) ||
-                    ((component == 'z' || component == 'b') && size > 2) ||
-                    ((component == 'w' || component == 'a') && size > 3) ||
-                     std::size_t(component) < size,
-            "swizzle parameter out of range of scatter vector, use either xyzw/rgba letters or small enough numbers");
-    };
-    template<std::size_t size> struct ScatterComponent<size, 'x', 0>: ScatterComponentOr<size, 0> {};
-    template<std::size_t size> struct ScatterComponent<size, 'y', 1>: ScatterComponentOr<size, 1> {};
-    template<std::size_t size> struct ScatterComponent<size, 'z', 2>: ScatterComponentOr<size, 2> {};
-    template<std::size_t size> struct ScatterComponent<size, 'w', 3>: ScatterComponentOr<size, 3> {};
-    template<std::size_t size> struct ScatterComponent<size, 'r', 0>: ScatterComponentOr<size, 0> {};
-    template<std::size_t size> struct ScatterComponent<size, 'g', 1>: ScatterComponentOr<size, 1> {};
-    template<std::size_t size> struct ScatterComponent<size, 'b', 2>: ScatterComponentOr<size, 2> {};
-    template<std::size_t size> struct ScatterComponent<size, 'a', 3>: ScatterComponentOr<size, 3> {};
-
-    template<class T, char component, std::size_t ...sequence> constexpr T scatterComponentOr(const T& vector, const typename T::Type& value, Sequence<sequence...>) {
-        return {ScatterComponent<T::Size, component, sequence>::value(vector, value)...};
-    }
-    template<class T, std::size_t valueSize> constexpr T scatterRecursive(const T& vector, const Vector<valueSize, typename T::Type>&, std::size_t) {
-        return vector;
-    }
-    template<class T, std::size_t valueSize, char component, char ...next> constexpr T scatterRecursive(const T& vector, const Vector<valueSize, typename T::Type>& values, std::size_t valueIndex) {
-        return scatterRecursive<T, valueSize, next...>(
-            scatterComponentOr<T, component>(vector, values._data[valueIndex], typename GenerateSequence<T::Size>::Type{}),
-            values, valueIndex + 1);
-    }
-}
-
-template<char ...components, class T> constexpr typename Implementation::TypeForSize<sizeof...(components), T>::Type gather(const T& vector) {
-    return {Implementation::GatherComponent<T::Size, components>::value(vector)...};
-}
-
-template<char ...components, class T> constexpr T scatter(const T& vector, const typename std::common_type<Vector<sizeof...(components), typename T::Type>>::type& values)
-{
-    return Implementation::scatterRecursive<T, sizeof...(components), components...>(vector, values, 0);
-}
-
-}}
-
-#endif
 #ifndef Magnum_Math_Vector3_h
 #define Magnum_Math_Vector3_h
 
 namespace Magnum { namespace Math {
 
 template<class T> inline Vector3<T> cross(const Vector3<T>& a, const Vector3<T>& b) {
-    return gather<'y', 'z', 'x'>(a*gather<'y', 'z', 'x'>(b) -
-                                 b*gather<'y', 'z', 'x'>(a));
+    return {
+        a._data[1]*b._data[2] - b._data[1]*a._data[2],
+        a._data[2]*b._data[0] - b._data[2]*a._data[0],
+        a._data[0]*b._data[1] - b._data[0]*a._data[1]
+    };
 }
 
 template<class T> class Vector3: public Vector<3, T> {
@@ -3272,7 +3335,7 @@ template<class T> class Vector3: public Vector<3, T> {
 
         constexpr explicit Vector3(ZeroInitT) noexcept: Vector<3, T>{ZeroInit} {}
 
-        explicit Vector3(NoInitT) noexcept: Vector<3, T>{NoInit} {}
+        explicit Vector3(Magnum::NoInitT) noexcept: Vector<3, T>{Magnum::NoInit} {}
 
         constexpr explicit Vector3(T value) noexcept: Vector<3, T>(value) {}
 
@@ -3317,6 +3380,9 @@ template<class T> class Vector3: public Vector<3, T> {
         }
 
         MAGNUM_VECTOR_SUBCLASS_IMPLEMENTATION(3, Vector3)
+
+    private:
+        template<class U> friend Vector3<U> cross(const Vector3<U>&, const Vector3<U>&);
 };
 
 MAGNUM_VECTORn_OPERATOR_IMPLEMENTATION(3, Vector3)
@@ -3348,7 +3414,7 @@ template<class T> class Vector4: public Vector<4, T> {
 
         constexpr explicit Vector4(ZeroInitT) noexcept: Vector<4, T>{ZeroInit} {}
 
-        explicit Vector4(NoInitT) noexcept: Vector<4, T>{NoInit} {}
+        explicit Vector4(Magnum::NoInitT) noexcept: Vector<4, T>{Magnum::NoInit} {}
 
         constexpr explicit Vector4(T value) noexcept: Vector<4, T>(value) {}
 
@@ -3424,6 +3490,73 @@ namespace Implementation {
 }}
 
 #endif
+#ifndef Magnum_Math_Half_h
+#define Magnum_Math_Half_h
+
+namespace Magnum { namespace Math {
+
+MAGNUM_EXPORT UnsignedShort packHalf(Float value);
+MAGNUM_EXPORT Float unpackHalf(UnsignedShort value);
+
+class Half {
+    public:
+        constexpr /*implicit*/ Half() noexcept: _data{} {}
+
+        constexpr explicit Half(ZeroInitT) noexcept: _data{} {}
+
+        constexpr explicit Half(UnsignedShort data) noexcept: _data{data} {}
+
+        explicit Half(Float value) noexcept: _data{packHalf(value)} {}
+
+        explicit Half(Double value) noexcept: _data{packHalf(Float(value))} {}
+
+        explicit Half(Magnum::NoInitT) noexcept {}
+
+        constexpr bool operator==(Half other) const {
+            return (((      _data & 0x7c00) == 0x7c00 && (      _data & 0x03ff)) ||
+                    ((other._data & 0x7c00) == 0x7c00 && (other._data & 0x03ff))) ?
+                false : _data == other._data;
+        }
+
+        constexpr bool operator!=(Half other) const {
+            return !operator==(other);
+        }
+
+        constexpr Half operator+() const { return *this; }
+
+        constexpr Half operator-() const {
+            return Half{UnsignedShort(_data ^ (1 << 15))};
+        }
+
+        constexpr explicit operator UnsignedShort() const { return _data; }
+
+        explicit operator Float() const { return unpackHalf(_data); }
+
+        constexpr UnsignedShort data() const { return _data; }
+
+    private:
+        UnsignedShort _data;
+};
+
+namespace Literals {
+
+inline Half operator "" _h(long double value) { return Half(Float(value)); }
+
+}
+
+namespace Implementation {
+
+template<> struct StrictWeakOrdering<Half> {
+    bool operator()(Half a, Half b) const {
+        return a.data() < b.data();
+    }
+};
+
+}
+
+}}
+
+#endif
 #ifndef Magnum_Math_Color_h
 #define Magnum_Math_Color_h
 
@@ -3431,7 +3564,7 @@ namespace Magnum { namespace Math {
 
 namespace Implementation {
 
-template<class T> typename std::enable_if<std::is_floating_point<T>::value, Color3<T>>::type fromHsv(ColorHsv<T> hsv) {
+template<class T> typename std::enable_if<IsFloatingPoint<T>::value, Color3<T>>::type fromHsv(ColorHsv<T> hsv) {
     hsv.hue -= floor(T(hsv.hue)/T(360))*Deg<T>(360);
     if(hsv.hue < Deg<T>(0)) hsv.hue += Deg<T>(360);
 
@@ -3449,10 +3582,10 @@ template<class T> typename std::enable_if<std::is_floating_point<T>::value, Colo
         case 3: return {p, q, hsv.value};
         case 4: return {t, p, hsv.value};
         case 5: return {hsv.value, p, q};
-        default: CORRADE_ASSERT_UNREACHABLE();
+        default: CORRADE_INTERNAL_ASSERT_UNREACHABLE();
     }
 }
-template<class T> inline typename std::enable_if<std::is_integral<T>::value, Color3<T>>::type fromHsv(const ColorHsv<typename TypeTraits<T>::FloatingPointType>& hsv) {
+template<class T> inline typename std::enable_if<IsIntegral<T>::value, Color3<T>>::type fromHsv(const ColorHsv<typename TypeTraits<T>::FloatingPointType>& hsv) {
     return pack<Color3<T>>(fromHsv<typename TypeTraits<T>::FloatingPointType>(hsv));
 }
 
@@ -3472,114 +3605,117 @@ template<class T> Deg<T> hue(const Color3<T>& color, T max, T delta) {
     return Deg<T>(hue);
 }
 
-template<class T> inline Deg<T> hue(typename std::enable_if<std::is_floating_point<T>::value, const Color3<T>&>::type color) {
+template<class T> inline Deg<T> hue(typename std::enable_if<IsFloatingPoint<T>::value, const Color3<T>&>::type color) {
     T max = color.max();
     T delta = max - color.min();
     return hue(color, max, delta);
 }
-template<class T> inline T saturation(typename std::enable_if<std::is_floating_point<T>::value, const Color3<T>&>::type color) {
+template<class T> inline T saturation(typename std::enable_if<IsFloatingPoint<T>::value, const Color3<T>&>::type color) {
     T max = color.max();
     T delta = max - color.min();
     return max != T(0) ? delta/max : T(0);
 }
-template<class T> inline T value(typename std::enable_if<std::is_floating_point<T>::value, const Color3<T>&>::type color) {
+template<class T> inline T value(typename std::enable_if<IsFloatingPoint<T>::value, const Color3<T>&>::type color) {
     return color.max();
 }
 
-template<class T> inline Deg<typename Color3<T>::FloatingPointType> hue(typename std::enable_if<std::is_integral<T>::value, const Color3<T>&>::type color) {
+template<class T> inline Deg<typename Color3<T>::FloatingPointType> hue(typename std::enable_if<IsIntegral<T>::value, const Color3<T>&>::type color) {
     return hue<typename Color3<T>::FloatingPointType>(unpack<Color3<typename Color3<T>::FloatingPointType>>(color));
 }
-template<class T> inline typename Color3<T>::FloatingPointType saturation(typename std::enable_if<std::is_integral<T>::value, const Color3<T>&>::type& color) {
+template<class T> inline typename Color3<T>::FloatingPointType saturation(typename std::enable_if<IsIntegral<T>::value, const Color3<T>&>::type& color) {
     return saturation<typename Color3<T>::FloatingPointType>(unpack<Color3<typename Color3<T>::FloatingPointType>>(color));
 }
-template<class T> inline typename Color3<T>::FloatingPointType value(typename std::enable_if<std::is_integral<T>::value, const Color3<T>&>::type color) {
+template<class T> inline typename Color3<T>::FloatingPointType value(typename std::enable_if<IsIntegral<T>::value, const Color3<T>&>::type color) {
     return unpack<typename Color3<T>::FloatingPointType>(color.max());
 }
 
-template<class T> inline ColorHsv<T> toHsv(typename std::enable_if<std::is_floating_point<T>::value, const Color3<T>&>::type color) {
+template<class T> inline ColorHsv<T> toHsv(typename std::enable_if<IsFloatingPoint<T>::value, const Color3<T>&>::type color) {
     T max = color.max();
     T delta = max - color.min();
 
     return ColorHsv<T>{hue<typename Color3<T>::FloatingPointType>(color, max, delta), max != T(0) ? delta/max : T(0), max};
 }
-template<class T> inline ColorHsv<typename TypeTraits<T>::FloatingPointType> toHsv(typename std::enable_if<std::is_integral<T>::value, const Color3<T>&>::type color) {
+template<class T> inline ColorHsv<typename TypeTraits<T>::FloatingPointType> toHsv(typename std::enable_if<IsIntegral<T>::value, const Color3<T>&>::type color) {
     return toHsv<typename TypeTraits<T>::FloatingPointType>(unpack<Color3<typename TypeTraits<T>::FloatingPointType>>(color));
 }
 
-template<class T> typename std::enable_if<std::is_floating_point<T>::value, Color3<T>>::type fromSrgb(const Vector3<T>& srgb) {
+template<class T> typename std::enable_if<IsFloatingPoint<T>::value, Color3<T>>::type fromSrgb(const Vector3<T>& srgb) {
     constexpr const T a(T(0.055));
     return lerp(srgb/T(12.92), pow((srgb + Vector3<T>{a})/(T(1.0) + a), T(2.4)), srgb > Vector3<T>(T(0.04045)));
 }
-template<class T> typename std::enable_if<std::is_floating_point<T>::value, Color4<T>>::type fromSrgbAlpha(const Vector4<T>& srgbAlpha) {
+template<class T> typename std::enable_if<IsFloatingPoint<T>::value, Color4<T>>::type fromSrgbAlpha(const Vector4<T>& srgbAlpha) {
     return {fromSrgb<T>(srgbAlpha.rgb()), srgbAlpha.a()};
 }
-template<class T> inline typename std::enable_if<std::is_integral<T>::value, Color3<T>>::type fromSrgb(const Vector3<typename Color3<T>::FloatingPointType>& srgb) {
+template<class T> inline typename std::enable_if<IsIntegral<T>::value, Color3<T>>::type fromSrgb(const Vector3<typename Color3<T>::FloatingPointType>& srgb) {
     return pack<Color3<T>>(fromSrgb<typename Color3<T>::FloatingPointType>(srgb));
 }
-template<class T> inline typename std::enable_if<std::is_integral<T>::value, Color4<T>>::type fromSrgbAlpha(const Vector4<typename Color4<T>::FloatingPointType>& srgbAlpha) {
+template<class T> inline typename std::enable_if<IsIntegral<T>::value, Color4<T>>::type fromSrgbAlpha(const Vector4<typename Color4<T>::FloatingPointType>& srgbAlpha) {
     return {fromSrgb<T>(srgbAlpha.rgb()), pack<T>(srgbAlpha.a())};
 }
 template<class T, class Integral> inline Color3<T> fromSrgbIntegral(const Vector3<Integral>& srgb) {
-    static_assert(std::is_integral<Integral>::value, "only conversion from different integral type is supported");
+    static_assert(IsIntegral<Integral>::value, "only conversion from different integral type is supported");
     return fromSrgb<T>(unpack<Vector3<typename Color3<T>::FloatingPointType>>(srgb));
 }
 template<class T, class Integral> inline Color4<T> fromSrgbAlphaIntegral(const Vector4<Integral>& srgbAlpha) {
-    static_assert(std::is_integral<Integral>::value, "only conversion from different integral type is supported");
+    static_assert(IsIntegral<Integral>::value, "only conversion from different integral type is supported");
     return fromSrgbAlpha<T>(unpack<Vector4<typename Color4<T>::FloatingPointType>>(srgbAlpha));
 }
 
-template<class T> Vector3<typename Color3<T>::FloatingPointType> toSrgb(typename std::enable_if<std::is_floating_point<T>::value, const Color3<T>&>::type rgb) {
+template<class T> Vector3<typename Color3<T>::FloatingPointType> toSrgb(typename std::enable_if<IsFloatingPoint<T>::value, const Color3<T>&>::type rgb) {
     constexpr const T a = T(0.055);
     return lerp(rgb*T(12.92), (T(1.0) + a)*pow(rgb, T(1.0)/T(2.4)) - Vector3<T>{a}, rgb > Vector3<T>(T(0.0031308)));
 }
-template<class T> Vector4<typename Color4<T>::FloatingPointType> toSrgbAlpha(typename std::enable_if<std::is_floating_point<T>::value, const Color4<T>&>::type rgba) {
+template<class T> Vector4<typename Color4<T>::FloatingPointType> toSrgbAlpha(typename std::enable_if<IsFloatingPoint<T>::value, const Color4<T>&>::type rgba) {
     return {toSrgb<T>(rgba.rgb()), rgba.a()};
 }
-template<class T> inline Vector3<typename Color3<T>::FloatingPointType> toSrgb(typename std::enable_if<std::is_integral<T>::value, const Color3<T>&>::type rgb) {
+template<class T> inline Vector3<typename Color3<T>::FloatingPointType> toSrgb(typename std::enable_if<IsIntegral<T>::value, const Color3<T>&>::type rgb) {
     return toSrgb<typename Color3<T>::FloatingPointType>(unpack<Color3<typename Color3<T>::FloatingPointType>>(rgb));
 }
-template<class T> inline Vector4<typename Color4<T>::FloatingPointType> toSrgbAlpha(typename std::enable_if<std::is_integral<T>::value, const Color4<T>&>::type rgba) {
+template<class T> inline Vector4<typename Color4<T>::FloatingPointType> toSrgbAlpha(typename std::enable_if<IsIntegral<T>::value, const Color4<T>&>::type rgba) {
     return {toSrgb<T>(rgba.rgb()), unpack<typename Color3<T>::FloatingPointType>(rgba.a())};
 }
 template<class T, class Integral> inline Vector3<Integral> toSrgbIntegral(const Color3<T>& rgb) {
-    static_assert(std::is_integral<Integral>::value, "only conversion from different integral type is supported");
+    static_assert(IsIntegral<Integral>::value, "only conversion from different integral type is supported");
     return pack<Vector3<Integral>>(toSrgb<T>(rgb));
 }
 template<class T, class Integral> inline Vector4<Integral> toSrgbAlphaIntegral(const Color4<T>& rgba) {
-    static_assert(std::is_integral<Integral>::value, "only conversion from different integral type is supported");
+    static_assert(IsIntegral<Integral>::value, "only conversion from different integral type is supported");
     return pack<Vector4<Integral>>(toSrgbAlpha<T>(rgba));
 }
 
-template<class T> typename std::enable_if<std::is_floating_point<T>::value, Color3<T>>::type fromXyz(const Vector3<T>& xyz) {
+template<class T> typename std::enable_if<IsFloatingPoint<T>::value, Color3<T>>::type fromXyz(const Vector3<T>& xyz) {
     return Matrix3x3<T>{
         Vector3<T>{T(12831)/T(3959), T(-851781)/T(878810), T(705)/T(12673)},
         Vector3<T>{T(-329)/T(214), T(1648619)/T(878810), T(-2585)/T(12673)},
         Vector3<T>{T(-1974)/T(3959), T(36519)/T(878810), T(705)/T(667)}}*xyz;
 }
-template<class T> inline typename std::enable_if<std::is_integral<T>::value, Color3<T>>::type fromXyz(const Vector3<typename Color3<T>::FloatingPointType>& xyz) {
+template<class T> inline typename std::enable_if<IsIntegral<T>::value, Color3<T>>::type fromXyz(const Vector3<typename Color3<T>::FloatingPointType>& xyz) {
     return pack<Color3<T>>(fromXyz<typename Color3<T>::FloatingPointType>(xyz));
 }
 
-template<class T> Vector3<typename Color3<T>::FloatingPointType> toXyz(typename std::enable_if<std::is_floating_point<T>::value, const Color3<T>&>::type rgb) {
+template<class T> Vector3<typename Color3<T>::FloatingPointType> toXyz(typename std::enable_if<IsFloatingPoint<T>::value, const Color3<T>&>::type rgb) {
     return (Matrix3x3<T>{
         Vector3<T>{T(506752)/T(1228815), T(87098)/T(409605), T(7918)/T(409605)},
         Vector3<T>{T(87881)/T(245763), T(175762)/T(245763), T(87881)/T(737289)},
         Vector3<T>{T(12673)/T(70218), T(12673)/T(175545), T(1001167)/T(1053270)}})*rgb;
 }
-template<class T> inline Vector3<typename Color3<T>::FloatingPointType> toXyz(typename std::enable_if<std::is_integral<T>::value, const Color3<T>&>::type rgb) {
+template<class T> inline Vector3<typename Color3<T>::FloatingPointType> toXyz(typename std::enable_if<IsIntegral<T>::value, const Color3<T>&>::type rgb) {
     return toXyz<typename Color3<T>::FloatingPointType>(unpack<Color3<typename Color3<T>::FloatingPointType>>(rgb));
 }
 
 #if !defined(CORRADE_MSVC2017_COMPATIBILITY) || defined(CORRADE_MSVC2015_COMPATIBILITY)
-template<class T> constexpr typename std::enable_if<std::is_floating_point<T>::value, T>::type fullChannel() {
-    return T(1);
+template<class T> constexpr typename std::enable_if<IsFloatingPoint<T>::value, T>::type fullChannel() {
+    return T(1.0);
 }
-template<class T> constexpr typename std::enable_if<std::is_integral<T>::value, T>::type fullChannel() {
+template<class T> constexpr typename std::enable_if<IsIntegral<T>::value, T>::type fullChannel() {
     return Implementation::bitMax<T>();
 }
 #else
 template<class T> constexpr T fullChannel() { return bitMax<T>(); }
 template<> constexpr float fullChannel<float>() { return 1.0f; }
+template<> constexpr Half fullChannel<Half>() {
+    return Half{UnsignedShort{0x3c00}};
+}
 template<> constexpr double fullChannel<double>() { return 1.0; }
 template<> constexpr long double fullChannel<long double>() { return 1.0l; }
 #endif
@@ -3640,7 +3776,7 @@ template<class T> class Color3: public Vector3<T> {
 
         constexpr explicit Color3(ZeroInitT) noexcept: Vector3<T>{ZeroInit} {}
 
-        explicit Color3(NoInitT) noexcept: Vector3<T>{NoInit} {}
+        explicit Color3(Magnum::NoInitT) noexcept: Vector3<T>{Magnum::NoInit} {}
 
         constexpr explicit Color3(T rgb) noexcept: Vector3<T>(rgb) {}
 
@@ -3767,7 +3903,7 @@ class Color4: public Vector4<T> {
 
         constexpr explicit Color4(ZeroInitT) noexcept: Vector4<T>{ZeroInit} {}
 
-        explicit Color4(NoInitT) noexcept: Vector4<T>{NoInit} {}
+        explicit Color4(Magnum::NoInitT) noexcept: Vector4<T>{Magnum::NoInit} {}
 
         constexpr explicit Color4(T rgb, T alpha = Implementation::fullChannel<T>()) noexcept: Vector4<T>(rgb, rgb, rgb, alpha) {}
 
@@ -3843,7 +3979,7 @@ template<class T> struct ColorHsv {
 
     constexpr explicit ColorHsv(ZeroInitT) noexcept: hue{}, saturation{}, value{} {}
 
-    explicit ColorHsv(NoInitT) noexcept: hue{NoInit} /* and the others not */ {}
+    explicit ColorHsv(Magnum::NoInitT) noexcept: hue{Magnum::NoInit} /* and the others not */ {}
 
     constexpr /*implicit*/ ColorHsv(Deg<T> hue, T saturation, T value) noexcept: hue{hue}, saturation{saturation}, value{value} {}
 
@@ -3941,7 +4077,7 @@ template<class T> inline T dot(const Complex<T>& a, const Complex<T>& b) {
 template<class T> inline Rad<T> angle(const Complex<T>& normalizedA, const Complex<T>& normalizedB) {
     CORRADE_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
         "Math::angle(): complex numbers" << normalizedA << "and" << normalizedB << "are not normalized", {});
-    return Rad<T>(std::acos(dot(normalizedA, normalizedB)));
+    return Rad<T>(std::acos(clamp(dot(normalizedA, normalizedB), T(-1), T(1))));
 }
 
 template<class T> class Complex {
@@ -3964,7 +4100,7 @@ template<class T> class Complex {
 
         constexpr explicit Complex(ZeroInitT) noexcept: _real{}, _imaginary{} {}
 
-        explicit Complex(NoInitT) noexcept {}
+        explicit Complex(Magnum::NoInitT) noexcept {}
 
         constexpr /*implicit*/ Complex(T real, T imaginary) noexcept: _real(real), _imaginary(imaginary) {}
 
@@ -4180,16 +4316,10 @@ template<class T> inline T dot(const Quaternion<T>& a, const Quaternion<T>& b) {
     return dot(a.vector(), b.vector()) + a.scalar()*b.scalar();
 }
 
-namespace Implementation {
-    template<class T> inline T angle(const Quaternion<T>& normalizedA, const Quaternion<T>& normalizedB) {
-        return std::acos(dot(normalizedA, normalizedB));
-    }
-}
-
 template<class T> inline Rad<T> angle(const Quaternion<T>& normalizedA, const Quaternion<T>& normalizedB) {
     CORRADE_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
         "Math::angle(): quaternions" << normalizedA << "and" << normalizedB << "are not normalized", {});
-    return Rad<T>{Implementation::angle(normalizedA, normalizedB)};
+    return Rad<T>{std::acos(clamp(dot(normalizedA, normalizedB), T(-1), T(1)))};
 }
 
 template<class T> inline Quaternion<T> lerp(const Quaternion<T>& normalizedA, const Quaternion<T>& normalizedB, T t) {
@@ -4207,8 +4337,10 @@ template<class T> inline Quaternion<T> slerp(const Quaternion<T>& normalizedA, c
         "Math::slerp(): quaternions" << normalizedA << "and" << normalizedB << "are not normalized", {});
     const T cosHalfAngle = dot(normalizedA, normalizedB);
 
-    if(std::abs(cosHalfAngle) >= T(1) - TypeTraits<T>::epsilon())
-        return normalizedA;
+    if(std::abs(cosHalfAngle) > T(1) - T(0.5)*TypeTraits<T>::epsilon()) {
+        const Quaternion<T> shortestNormalizedA = cosHalfAngle < 0 ? -normalizedA : normalizedA;
+        return (T(1) - t)*shortestNormalizedA + t*normalizedB;
+    }
 
     const T a = std::acos(cosHalfAngle);
     return (std::sin((T(1) - t)*a)*normalizedA + std::sin(t*a)*normalizedB)/std::sin(a);
@@ -4219,10 +4351,11 @@ template<class T> inline Quaternion<T> slerpShortestPath(const Quaternion<T>& no
         "Math::slerpShortestPath(): quaternions" << normalizedA << "and" << normalizedB << "are not normalized", {});
     const T cosHalfAngle = dot(normalizedA, normalizedB);
 
-    if(std::abs(cosHalfAngle) >= T(1) - TypeTraits<T>::epsilon())
-        return normalizedA;
-
     const Quaternion<T> shortestNormalizedA = cosHalfAngle < 0 ? -normalizedA : normalizedA;
+
+    if(std::abs(cosHalfAngle) >= T(1) - TypeTraits<T>::epsilon()) {
+        return (T(1) - t)*shortestNormalizedA + t*normalizedB;
+    }
 
     const T a = std::acos(std::abs(cosHalfAngle));
     return (std::sin((T(1) - t)*a)*shortestNormalizedA + std::sin(t*a)*normalizedB)/std::sin(a);
@@ -4242,7 +4375,7 @@ template<class T> class Quaternion {
 
         constexpr explicit Quaternion(ZeroInitT) noexcept: _vector{ZeroInit}, _scalar{T{0}} {}
 
-        explicit Quaternion(NoInitT) noexcept: _vector{NoInit} {}
+        explicit Quaternion(Magnum::NoInitT) noexcept: _vector{Magnum::NoInit} {}
 
         constexpr /*implicit*/ Quaternion(const Vector3<T>& vector, T scalar) noexcept: _vector(vector), _scalar(scalar) {}
 
@@ -4284,6 +4417,8 @@ template<class T> class Quaternion {
         Vector3<T> axis() const;
 
         Matrix3x3<T> toMatrix() const;
+
+        Vector3<Rad<T>> toEuler() const;
 
         Quaternion<T> operator-() const { return {-_vector, -_scalar}; }
 
@@ -4438,6 +4573,35 @@ template<class T> Matrix3x3<T> Quaternion<T>::toMatrix() const {
     };
 }
 
+template<class T> Vector3<Rad<T>> Quaternion<T>::toEuler() const {
+    CORRADE_ASSERT(isNormalized(),
+        "Math::Quaternion::toEuler():" << *this << "is not normalized", {});
+
+    Vector3<Rad<T>> euler{Magnum::NoInit};
+
+    Matrix3x3<T> rotMatrix = toMatrix();
+
+    T m11 = rotMatrix[0][0];
+    T m12 = rotMatrix[0][1];
+    T m13 = rotMatrix[0][2];
+    T m21 = rotMatrix[1][0];
+    T m22 = rotMatrix[1][1];
+    T m23 = rotMatrix[1][2];
+    T m33 = rotMatrix[2][2];
+
+    euler.y() = Rad<T>(std::asin(-Math::min(Math::max(m13, T(-1.0)), T(1.0))));
+
+    if(!TypeTraits<T>::equalsZero(m13 - T(1.0), T(1.0))) {
+        euler.x() = Rad<T>(std::atan2(m23, m33));
+        euler.z() = Rad<T>(std::atan2(m12, m11));
+    } else {
+        euler.x() = Rad<T>(0.0);
+        euler.z() = Rad<T>(std::atan2(-m21, m22));
+    }
+
+    return euler;
+}
+
 template<class T> inline Quaternion<T> Quaternion<T>::operator*(const Quaternion<T>& other) const {
     return {_scalar*other._vector + other._scalar*_vector + Math::cross(_vector, other._vector),
             _scalar*other._scalar - Math::dot(_vector, other._vector)};
@@ -4498,7 +4662,7 @@ template<class T> class CubicHermite {
 
         template<class U = T, class = typename std::enable_if<std::is_constructible<U, IdentityInitT>::value>::type> constexpr explicit CubicHermite(IdentityInitT) noexcept: _inTangent{ZeroInit}, _point{IdentityInit}, _outTangent{ZeroInit} {}
 
-        explicit CubicHermite(NoInitT) noexcept: CubicHermite{NoInit, typename std::conditional<std::is_constructible<T, NoInitT>::value, NoInitT*, void*>::type{}} {}
+        explicit CubicHermite(Magnum::NoInitT) noexcept: CubicHermite{Magnum::NoInit, typename std::conditional<std::is_constructible<T, Magnum::NoInitT>::value, Magnum::NoInitT*, void*>::type{}} {}
 
         constexpr /*implicit*/ CubicHermite(const T& inTangent, const T& point, const T& outTangent) noexcept: _inTangent{inTangent}, _point{point}, _outTangent{outTangent} {}
 
@@ -4528,8 +4692,8 @@ template<class T> class CubicHermite {
         constexpr explicit CubicHermite(ZeroInitT, ZeroInitT*) noexcept: _inTangent{ZeroInit}, _point{ZeroInit}, _outTangent{ZeroInit} {}
         constexpr explicit CubicHermite(ZeroInitT, void*) noexcept: _inTangent{T(0)}, _point{T(0)}, _outTangent{T(0)} {}
 
-        explicit CubicHermite(NoInitT, NoInitT*) noexcept: _inTangent{NoInit}, _point{NoInit}, _outTangent{NoInit} {}
-        explicit CubicHermite(NoInitT, void*) noexcept {}
+        explicit CubicHermite(Magnum::NoInitT, Magnum::NoInitT*) noexcept: _inTangent{Magnum::NoInit}, _point{Magnum::NoInit}, _outTangent{Magnum::NoInit} {}
+        explicit CubicHermite(Magnum::NoInitT, void*) noexcept {}
 
         T _inTangent;
         T _point;
@@ -4746,9 +4910,34 @@ template<class T> T lineSegmentPointSquared(const Vector3<T>& a, const Vector3<T
 
 namespace Corrade { namespace Utility {
 
-#define CORRADE_HAS_TYPE(className, typeExpression)                         \
+namespace Implementation {
+    template<class> struct FloatPrecision;
+    template<> struct FloatPrecision<float> {
+        enum: int { Digits = 6 };
+        constexpr static float epsilon() { return 1.0e-5f; }
+    };
+    template<> struct FloatPrecision<double> {
+        enum: int { Digits = 15 };
+        constexpr static double epsilon() { return 1.0e-14; }
+    };
+    template<> struct FloatPrecision<long double> {
+        #ifndef CORRADE_LONG_DOUBLE_SAME_AS_DOUBLE
+        enum: int { Digits = 18 };
+        constexpr static long double epsilon() { return 1.0e-17l; }
+        #else
+        enum: int { Digits = 15 };
+        constexpr static long double epsilon() { return 1.0e-14l; }
+        #endif
+    };
+}
+
+#if !defined(CORRADE_TARGET_LIBSTDCXX) || __GNUC__ >= 5 || _GLIBCXX_RELEASE >= 7
+#define CORRADE_STD_IS_TRIVIALLY_TRAITS_SUPPORTED
+#endif
+
+#define CORRADE_HAS_TYPE(className, ...)                                    \
 template<class U> class className {                                         \
-    template<class T> static char get(T&&, typeExpression* = nullptr);      \
+    template<class T> static char get(T&&, __VA_ARGS__* = nullptr);         \
     static short get(...);                                                  \
     public:                                                                 \
         enum: bool { value = sizeof(get(std::declval<U>())) == sizeof(char) }; \
@@ -4791,11 +4980,11 @@ template<class T> class Dual {
 
         constexpr /*implicit*/ Dual() noexcept: _real{}, _dual{} {}
 
-        template<class U = T, class = typename std::enable_if<std::is_pod<U>::value>::type> constexpr explicit Dual(ZeroInitT) noexcept: _real{}, _dual{} {}
+        template<class U = T, class = typename std::enable_if<std::is_standard_layout<U>::value && std::is_trivial<U>::value>::type> constexpr explicit Dual(ZeroInitT) noexcept: _real{}, _dual{} {}
         template<class U = T, class V = T, class = typename std::enable_if<std::is_constructible<U, ZeroInitT>::value>::type> constexpr explicit Dual(ZeroInitT) noexcept: _real{ZeroInit}, _dual{ZeroInit} {}
 
-        template<class U = T, class = typename std::enable_if<std::is_pod<U>::value>::type> explicit Dual(NoInitT) noexcept {}
-        template<class U = T, class V = T, class = typename std::enable_if<std::is_constructible<U, NoInitT>::value>::type> explicit Dual(NoInitT) noexcept: _real{NoInit}, _dual{NoInit} {}
+        template<class U = T, class = typename std::enable_if<std::is_standard_layout<U>::value && std::is_trivial<U>::value>::type> explicit Dual(Magnum::NoInitT) noexcept {}
+        template<class U = T, class V = T, class = typename std::enable_if<std::is_constructible<U, Magnum::NoInitT>::value>::type> explicit Dual(Magnum::NoInitT) noexcept: _real{Magnum::NoInit}, _dual{Magnum::NoInit} {}
 
         #if !defined(CORRADE_MSVC2017_COMPATIBILITY) || defined(CORRADE_MSVC2015_COMPATIBILITY)
         constexpr /*implicit*/ Dual(const T& real, const T& dual = T()) noexcept: _real(real), _dual(dual) {}
@@ -5023,7 +5212,7 @@ template<class T> class Matrix3: public Matrix3x3<T> {
 
         constexpr explicit Matrix3(ZeroInitT) noexcept: Matrix3x3<T>{ZeroInit} {}
 
-        constexpr explicit Matrix3(NoInitT) noexcept: Matrix3x3<T>{NoInit} {}
+        constexpr explicit Matrix3(Magnum::NoInitT) noexcept: Matrix3x3<T>{Magnum::NoInit} {}
 
         constexpr /*implicit*/ Matrix3(const Vector3<T>& first, const Vector3<T>& second, const Vector3<T>& third) noexcept: Matrix3x3<T>(first, second, third) {}
 
@@ -5174,7 +5363,7 @@ template<class T> class DualComplex: public Dual<Complex<T>> {
 
         constexpr explicit DualComplex(ZeroInitT) noexcept: Dual<Complex<T>>{Complex<T>{ZeroInit}, Complex<T>{ZeroInit}} {}
 
-        explicit DualComplex(NoInitT) noexcept: Dual<Complex<T>>{NoInit} {}
+        explicit DualComplex(Magnum::NoInitT) noexcept: Dual<Complex<T>>{Magnum::NoInit} {}
 
         constexpr /*implicit*/ DualComplex(const Complex<T>& real, const Complex<T>& dual = Complex<T>(T(0), T(0))) noexcept: Dual<Complex<T>>(real, dual) {}
 
@@ -5243,6 +5432,10 @@ template<class T> class DualComplex: public Dual<Complex<T>> {
 
         DualComplex<T> invertedNormalized() const {
             return DualComplex<T>(Dual<Complex<T>>::real().invertedNormalized(), {{}, {}})*DualComplex<T>({}, -Dual<Complex<T>>::dual());
+        }
+
+        Vector2<T> transformVector(const Vector2<T>& vector) const {
+            return Dual<Complex<T>>::real().transformVector(vector);
         }
 
         Vector2<T> transformPoint(const Vector2<T>& vector) const {
@@ -5343,7 +5536,7 @@ template<class T> class Matrix4: public Matrix4x4<T> {
 
         constexpr explicit Matrix4(ZeroInitT) noexcept: Matrix4x4<T>{ZeroInit} {}
 
-        constexpr explicit Matrix4(NoInitT) noexcept: Matrix4x4<T>{NoInit} {}
+        constexpr explicit Matrix4(Magnum::NoInitT) noexcept: Matrix4x4<T>{Magnum::NoInit} {}
 
         constexpr /*implicit*/ Matrix4(const Vector4<T>& first, const Vector4<T>& second, const Vector4<T>& third, const Vector4<T>& fourth) noexcept: Matrix4x4<T>(first, second, third, fourth) {}
 
@@ -5675,7 +5868,7 @@ template<class T> class DualQuaternion: public Dual<Quaternion<T>> {
 
         constexpr explicit DualQuaternion(ZeroInitT) noexcept: Dual<Quaternion<T>>{Quaternion<T>{ZeroInit}, Quaternion<T>{ZeroInit}} {}
 
-        explicit DualQuaternion(NoInitT) noexcept: Dual<Quaternion<T>>{NoInit} {}
+        explicit DualQuaternion(Magnum::NoInitT) noexcept: Dual<Quaternion<T>>{Magnum::NoInit} {}
 
         constexpr /*implicit*/ DualQuaternion(const Quaternion<T>& real, const Quaternion<T>& dual = Quaternion<T>({}, T(0))) noexcept: Dual<Quaternion<T>>(real, dual) {}
 
@@ -5748,6 +5941,14 @@ template<class T> class DualQuaternion: public Dual<Quaternion<T>> {
             return quaternionConjugated();
         }
 
+        Vector3<T> transformVector(const Vector3<T>& vector) const {
+            return Dual<Quaternion<T>>::real().transformVector(vector);
+        }
+
+        Vector3<T> transformVectorNormalized(const Vector3<T>& vector) const {
+            return Dual<Quaternion<T>>::real().transformVectorNormalized(vector);
+        }
+
         Vector3<T> transformPoint(const Vector3<T>& vector) const {
             return ((*this)*DualQuaternion<T>(vector)*inverted().dualConjugated()).dual().vector();
         }
@@ -5795,7 +5996,7 @@ template<class T> class Frustum {
 
         constexpr explicit Frustum(IdentityInitT) noexcept;
 
-        explicit Frustum(NoInitT) noexcept: _data{Vector4<T>{NoInit}, Vector4<T>{NoInit}, Vector4<T>{NoInit}, Vector4<T>{NoInit}, Vector4<T>{NoInit}, Vector4<T>{NoInit}} {}
+        explicit Frustum(Magnum::NoInitT) noexcept: _data{Vector4<T>{Magnum::NoInit}, Vector4<T>{Magnum::NoInit}, Vector4<T>{Magnum::NoInit}, Vector4<T>{Magnum::NoInit}, Vector4<T>{Magnum::NoInit}, Vector4<T>{Magnum::NoInit}} {}
 
         constexpr /*implicit*/ Frustum(const Vector4<T>& left, const Vector4<T>& right, const Vector4<T>& bottom, const Vector4<T>& top, const Vector4<T>& near, const Vector4<T>& far) noexcept: _data{left, right, bottom, top, near, far} {}
 
@@ -5821,28 +6022,44 @@ template<class T> class Frustum {
         T* data() { return _data[0].data(); }
         constexpr const T* data() const { return _data[0].data(); }
 
+        Vector4<T>& operator[](std::size_t i) {
+            CORRADE_ASSERT(i < 6, "Math::Frustum::operator[](): index" << i << "out of range",
+                _data[i]);
+            return _data[i];
+        }
+
         constexpr const Vector4<T>& operator[](std::size_t i) const {
             return CORRADE_CONSTEXPR_ASSERT(i < 6, "Math::Frustum::operator[](): index" << i << "out of range"), _data[i];
         }
 
         Vector4<T>* begin() { return _data; }
+
         constexpr const Vector4<T>* begin() const { return _data; }
+
         constexpr const Vector4<T>* cbegin() const { return _data; }
 
         Vector4<T>* end() { return _data + 6; }
+
         constexpr const Vector4<T>* end() const { return _data + 6; }
+
         constexpr const Vector4<T>* cend() const { return _data + 6; }
 
+        Vector4<T>& left() { return _data[0]; }
         constexpr Vector4<T> left() const { return _data[0]; }
 
+        Vector4<T>& right() { return _data[1]; }
         constexpr Vector4<T> right() const { return _data[1]; }
 
+        Vector4<T>& bottom() { return _data[2]; }
         constexpr Vector4<T> bottom() const { return _data[2]; }
 
+        Vector4<T>& top() { return _data[3]; }
         constexpr Vector4<T> top() const { return _data[3]; }
 
+        Vector4<T>& near() { return _data[4]; }
         constexpr Vector4<T> near() const { return _data[4]; }
 
+        Vector4<T>& far() { return _data[5]; }
         constexpr Vector4<T> far() const { return _data[5]; }
 
     private:
@@ -5886,68 +6103,6 @@ template<class T> struct StrictWeakOrdering<Frustum<T>> {
 }}
 
 #endif
-#ifndef Magnum_Math_Half_h
-#define Magnum_Math_Half_h
-
-namespace Magnum { namespace Math {
-
-class Half {
-    public:
-        constexpr /*implicit*/ Half() noexcept: _data{} {}
-
-        constexpr explicit Half(ZeroInitT) noexcept: _data{} {}
-
-        constexpr explicit Half(UnsignedShort data) noexcept: _data{data} {}
-
-        explicit Half(Float value) noexcept: _data{packHalf(value)} {}
-
-        explicit Half(NoInitT) noexcept {}
-
-        constexpr bool operator==(Half other) const {
-            return (((      _data & 0x7c00) == 0x7c00 && (      _data & 0x03ff)) ||
-                    ((other._data & 0x7c00) == 0x7c00 && (other._data & 0x03ff))) ?
-                false : _data == other._data;
-        }
-
-        constexpr bool operator!=(Half other) const {
-            return !operator==(other);
-        }
-
-        constexpr Half operator+() const { return *this; }
-
-        constexpr Half operator-() const {
-            return Half{UnsignedShort(_data ^ (1 << 15))};
-        }
-
-        constexpr explicit operator UnsignedShort() const { return _data; }
-
-        explicit operator Float() const { return unpackHalf(_data); }
-
-        constexpr UnsignedShort data() const { return _data; }
-
-    private:
-        UnsignedShort _data;
-};
-
-namespace Literals {
-
-inline Half operator "" _h(long double value) { return Half(Float(value)); }
-
-}
-
-namespace Implementation {
-
-template<> struct StrictWeakOrdering<Half> {
-    bool operator()(Half a, Half b) const {
-        return a.data() < b.data();
-    }
-};
-
-}
-
-}}
-
-#endif
 #ifndef Magnum_Math_Range_h
 #define Magnum_Math_Range_h
 
@@ -5981,7 +6136,7 @@ template<UnsignedInt dimensions, class T> class Range {
 
         constexpr explicit Range(ZeroInitT) noexcept: Range<dimensions, T>{ZeroInit, typename std::conditional<dimensions == 1, void*, ZeroInitT*>::type{}} {}
 
-        explicit Range(NoInitT) noexcept: Range<dimensions, T>{NoInit, typename std::conditional<dimensions == 1, void*, NoInitT*>::type{}} {}
+        explicit Range(Magnum::NoInitT) noexcept: Range<dimensions, T>{Magnum::NoInit, typename std::conditional<dimensions == 1, void*, Magnum::NoInitT*>::type{}} {}
 
         constexpr /*implicit*/ Range(const VectorType& min, const VectorType& max) noexcept: _min{min}, _max{max} {}
 
@@ -6054,8 +6209,8 @@ template<UnsignedInt dimensions, class T> class Range {
         constexpr explicit Range(ZeroInitT, ZeroInitT*) noexcept: _min{ZeroInit}, _max{ZeroInit} {}
         constexpr explicit Range(ZeroInitT, void*) noexcept: _min{T(0)}, _max{T(0)} {}
 
-        explicit Range(NoInitT, NoInitT*) noexcept: _min{NoInit}, _max{NoInit} {}
-        explicit Range(NoInitT, void*) noexcept {}
+        explicit Range(Magnum::NoInitT, Magnum::NoInitT*) noexcept: _min{Magnum::NoInit}, _max{Magnum::NoInit} {}
+        explicit Range(Magnum::NoInitT, void*) noexcept {}
 
         constexpr const VectorType* dataInternal(void*) const { return &_min; }
         VectorType* dataInternal(void*) { return &_min; }
@@ -6096,9 +6251,13 @@ template<class T> class Range2D: public Range<2, T> {
 
         constexpr explicit Range2D(ZeroInitT) noexcept: Range<2, T>{ZeroInit} {}
 
-        explicit Range2D(NoInitT) noexcept: Range<2, T>{NoInit} {}
+        explicit Range2D(Magnum::NoInitT) noexcept: Range<2, T>{Magnum::NoInit} {}
 
         constexpr /*implicit*/ Range2D(const Vector2<T>& min, const Vector2<T>& max) noexcept: Range<2, T>(min, max) {}
+
+        /*implicit*/ Range2D(const std::pair<Vector2<T>, Vector2<T>>& minmax) noexcept: Range<2, T>{minmax.first, minmax.second} {}
+
+        /*implicit*/ Range2D(const std::pair<Vector<2, T>, Vector<2, T>>& minmax) noexcept: Range<2, T>{minmax.first, minmax.second} {}
 
         template<class U> constexpr explicit Range2D(const Range2D<U>& other) noexcept: Range<2, T>(other) {}
 
@@ -6172,9 +6331,13 @@ template<class T> class Range3D: public Range<3, T> {
 
         constexpr explicit Range3D(ZeroInitT) noexcept: Range<3, T>{ZeroInit} {}
 
-        explicit Range3D(NoInitT) noexcept: Range<3, T>{NoInit} {}
+        explicit Range3D(Magnum::NoInitT) noexcept: Range<3, T>{Magnum::NoInit} {}
 
         constexpr /*implicit*/ Range3D(const Vector3<T>& min, const Vector3<T>& max) noexcept: Range<3, T>(min, max) {}
+
+        /*implicit*/ Range3D(const std::pair<Vector3<T>, Vector3<T>>& minmax) noexcept: Range<3, T>{minmax.first, minmax.second} {}
+
+        /*implicit*/ Range3D(const std::pair<Vector<3, T>, Vector<3, T>>& minmax) noexcept: Range<3, T>{minmax.first, minmax.second} {}
 
         template<class U> constexpr explicit Range3D(const Range3D<U>& other) noexcept: Range<3, T>(other) {}
 
@@ -6569,6 +6732,92 @@ struct StrictWeakOrdering {
         return o(a, b);
     }
 };
+
+}}
+
+#endif
+#ifndef Magnum_Math_Swizzle_h
+#define Magnum_Math_Swizzle_h
+
+namespace Magnum { namespace Math {
+
+namespace Implementation {
+    template<std::size_t size, std::size_t position> struct GatherComponentAt {
+        static_assert(size > position, "numeric swizzle parameter out of range of gather vector, use either xyzw/rgba/0/1 letters or small enough numbers");
+
+        template<class T> constexpr static T value(const Math::Vector<size, T>& vector) {
+            return vector._data[position];
+        }
+    };
+
+    template<std::size_t size, char component> struct GatherComponent: GatherComponentAt<size, component> {};
+    template<std::size_t size> struct GatherComponent<size, 'x'>: public GatherComponentAt<size, 0> {};
+    template<std::size_t size> struct GatherComponent<size, 'y'>: public GatherComponentAt<size, 1> {};
+    template<std::size_t size> struct GatherComponent<size, 'z'>: public GatherComponentAt<size, 2> {};
+    template<std::size_t size> struct GatherComponent<size, 'w'>: public GatherComponentAt<size, 3> {};
+    template<std::size_t size> struct GatherComponent<size, 'r'>: public GatherComponentAt<size, 0> {};
+    template<std::size_t size> struct GatherComponent<size, 'g'>: public GatherComponentAt<size, 1> {};
+    template<std::size_t size> struct GatherComponent<size, 'b'>: public GatherComponentAt<size, 2> {};
+    template<std::size_t size> struct GatherComponent<size, 'a'>: public GatherComponentAt<size, 3> {};
+    template<std::size_t size> struct GatherComponent<size, '0'> {
+        template<class T> constexpr static T value(const Math::Vector<size, T>&) { return T(0); }
+    };
+    template<std::size_t size> struct GatherComponent<size, '1'> {
+        template<class T> constexpr static T value(const Math::Vector<size, T>&) { return T(1); }
+    };
+
+    template<std::size_t size, class T> struct TypeForSize {
+        typedef Math::Vector<size, typename T::Type> Type;
+    };
+
+    template<std::size_t size, std::size_t i, bool = true> struct ScatterComponentOr {
+        template<class T> constexpr static T value(const Math::Vector<size, T>&, const T& value) {
+            return value;
+        }
+    };
+    template<std::size_t size, std::size_t i> struct ScatterComponentOr<size, i, false> {
+        template<class T> constexpr static T value(const Math::Vector<size, T>& vector, const T&) {
+            return vector._data[i];
+        }
+    };
+    template<std::size_t size, char component, std::size_t i> struct ScatterComponent: ScatterComponentOr<size, i, std::size_t(component) == i> {
+        static_assert(component == 'x' || component == 'r' ||
+                    ((component == 'y' || component == 'g') && size > 1) ||
+                    ((component == 'z' || component == 'b') && size > 2) ||
+                    ((component == 'w' || component == 'a') && size > 3) ||
+                     std::size_t(component) < size,
+            "swizzle parameter out of range of scatter vector, use either xyzw/rgba letters or small enough numbers");
+    };
+    template<std::size_t size> struct ScatterComponent<size, 'x', 0>: ScatterComponentOr<size, 0> {};
+    template<std::size_t size> struct ScatterComponent<size, 'y', 1>: ScatterComponentOr<size, 1> {};
+    template<std::size_t size> struct ScatterComponent<size, 'z', 2>: ScatterComponentOr<size, 2> {};
+    template<std::size_t size> struct ScatterComponent<size, 'w', 3>: ScatterComponentOr<size, 3> {};
+    template<std::size_t size> struct ScatterComponent<size, 'r', 0>: ScatterComponentOr<size, 0> {};
+    template<std::size_t size> struct ScatterComponent<size, 'g', 1>: ScatterComponentOr<size, 1> {};
+    template<std::size_t size> struct ScatterComponent<size, 'b', 2>: ScatterComponentOr<size, 2> {};
+    template<std::size_t size> struct ScatterComponent<size, 'a', 3>: ScatterComponentOr<size, 3> {};
+
+    template<class T, char component, std::size_t ...sequence> constexpr T scatterComponentOr(const T& vector, const typename T::Type& value, Sequence<sequence...>) {
+        return {ScatterComponent<T::Size, component, sequence>::value(vector, value)...};
+    }
+    template<class T, std::size_t valueSize> constexpr T scatterRecursive(const T& vector, const Vector<valueSize, typename T::Type>&, std::size_t) {
+        return vector;
+    }
+    template<class T, std::size_t valueSize, char component, char ...next> constexpr T scatterRecursive(const T& vector, const Vector<valueSize, typename T::Type>& values, std::size_t valueIndex) {
+        return scatterRecursive<T, valueSize, next...>(
+            scatterComponentOr<T, component>(vector, values._data[valueIndex], typename GenerateSequence<T::Size>::Type{}),
+            values, valueIndex + 1);
+    }
+}
+
+template<char ...components, class T> constexpr typename Implementation::TypeForSize<sizeof...(components), T>::Type gather(const T& vector) {
+    return {Implementation::GatherComponent<T::Size, components>::value(vector)...};
+}
+
+template<char ...components, class T> constexpr T scatter(const T& vector, const typename std::common_type<Vector<sizeof...(components), typename T::Type>>::type& values)
+{
+    return Implementation::scatterRecursive<T, sizeof...(components), components...>(vector, values, 0);
+}
 
 }}
 
@@ -7143,7 +7392,7 @@ template<std::size_t size, class T> struct VectorConverter<size, T, Eigen::Ref<c
     #endif
 >>> {
     static Vector<size, T> from(const Eigen::Ref<const Eigen::Array<T, size, 1>>& other) {
-        Vector<size, T> out{NoInit};
+        Vector<size, T> out{Magnum::NoInit};
         for(std::size_t i = 0; i != size; ++i)
             out[i] = other(i, 0);
         return out;
@@ -7188,7 +7437,7 @@ template<std::size_t size, class T> struct VectorConverter<size, T, Eigen::Ref<c
     #endif
 >>> {
     static Vector<size, T> from(const Eigen::Ref<const Eigen::Matrix<T, size, 1>>& other) {
-        Vector<size, T> out{NoInit};
+        Vector<size, T> out{Magnum::NoInit};
         for(std::size_t i = 0; i != size; ++i)
             out[i] = other(i, 0);
         return out;
@@ -7233,7 +7482,7 @@ template<std::size_t cols, std::size_t rows, class T> struct RectangularMatrixCo
     #endif
 >>> {
     static RectangularMatrix<cols, rows, T> from(const Eigen::Ref<const Eigen::Array<T, rows, cols>>& other) {
-        RectangularMatrix<cols, rows, T> out{NoInit};
+        RectangularMatrix<cols, rows, T> out{Magnum::NoInit};
         for(std::size_t col = 0; col != cols; ++col)
             for(std::size_t row = 0; row != rows; ++row)
                 out[col][row] = other(row, col);
@@ -7280,7 +7529,7 @@ template<std::size_t cols, std::size_t rows, class T> struct RectangularMatrixCo
     #endif
 >>> {
     static RectangularMatrix<cols, rows, T> from(const Eigen::Ref<const Eigen::Matrix<T, rows, cols>>& other) {
-        RectangularMatrix<cols, rows, T> out{NoInit};
+        RectangularMatrix<cols, rows, T> out{Magnum::NoInit};
         for(std::size_t col = 0; col != cols; ++col)
             for(std::size_t row = 0; row != rows; ++row)
                 out[col][row] = other(row, col);

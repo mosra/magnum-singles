@@ -13,6 +13,9 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    v2020.06-0-g61d1b58c (2020-06-27)
+    -   Working around various compiler-specific issues and standard defects
+        when using {}-initialization for aggregate types
     v2019.10-0-g162d6a7d (2019-10-24)
     -   Minor simplifications in the internals
     v2019.01-107-g80d9f347 (2019-03-23)
@@ -23,14 +26,14 @@
     v2018.10-183-g4eb1adc0 (2019-01-23)
     -   Initial release
 
-    Generated from Corrade v2019.10-0-g162d6a7d (2019-10-24), 330 / 2736 LoC
+    Generated from Corrade v2020.06-0-g61d1b58c (2020-06-27), 358 / 2883 LoC
 */
 
 /*
     This file is part of Corrade.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
-                2017, 2018, 2019 Vladimír Vondruš <mosra@centrum.cz>
+                2017, 2018, 2019, 2020 Vladimír Vondruš <mosra@centrum.cz>
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the "Software"),
@@ -56,6 +59,10 @@
 #include <utility>
 #if !defined(CORRADE_ASSERT) && !defined(NDEBUG)
 #include <cassert>
+#endif
+
+#ifdef __GNUC__
+#define CORRADE_TARGET_GCC
 #endif
 
 #ifndef Corrade_Containers_Tags_h
@@ -108,6 +115,27 @@ constexpr InPlaceInitT InPlaceInit{InPlaceInitT::Init{}};
 }}
 
 #endif
+#ifndef Corrade_Containers_constructHelpers_h
+#define Corrade_Containers_constructHelpers_h
+
+namespace Corrade { namespace Containers { namespace Implementation {
+
+template<class T, class First, class ...Next> inline void construct(T& value, First&& first, Next&& ...next) {
+    new(&value) T{std::forward<First>(first), std::forward<Next>(next)...};
+}
+template<class T> inline void construct(T& value) {
+    new(&value) T();
+}
+
+#if defined(CORRADE_TARGET_GCC) && __GNUC__ < 5
+template<class T> inline void construct(T& value, T&& b) {
+    new(&value) T(std::move(b));
+}
+#endif
+
+}}}
+
+#endif
 #ifndef CORRADE_ASSERT
 #ifdef NDEBUG
 #define CORRADE_ASSERT(condition, message, returnValue) do {} while(0)
@@ -144,7 +172,7 @@ template<class T> class Optional {
         }
 
         template<class ...Args> /*implicit*/ Optional(InPlaceInitT, Args&&... args) noexcept(std::is_nothrow_constructible<T, Args&&...>::value): _set{true} {
-            new(&_value) T{std::forward<Args>(args)...};
+            Implementation::construct(_value, std::forward<Args>(args)...);
         }
 
         template<class U, class = decltype(Implementation::OptionalConverter<T, U>::from(std::declval<const U&>()))> explicit Optional(const U& other) noexcept(std::is_nothrow_copy_constructible<T>::value): Optional{Implementation::OptionalConverter<T, U>::from(other)} {}
@@ -290,7 +318,7 @@ template<class T> Optional<T>& Optional<T>::operator=(NullOptT) noexcept {
 template<class T> template<class ...Args> T& Optional<T>::emplace(Args&&... args) {
     if(_set) _value.~T();
     _set = true;
-    new(&_value) T{std::forward<Args>(args)...};
+    Implementation::construct<T>(_value, std::forward<Args>(args)...);
     return _value;
 }
 
