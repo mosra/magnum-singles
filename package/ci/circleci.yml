@@ -1,0 +1,74 @@
+version: 2.1
+
+notify:
+  webhooks:
+    # Unfortunately Gitter messages are too verbose (one five-line message per
+    # each job in the build matrix) and thus not wanted
+    #- url: https://webhooks.gitter.im/e/cfbadbd34d28708a57c6
+
+executors:
+  ubuntu-16_04:
+    docker:
+    - image: ubuntu:xenial-20201014
+
+commands:
+  install-base-linux:
+    parameters:
+      extra:
+        type: string
+    steps:
+    - run:
+        name: Update apt and install base packages
+        command: |
+          apt update
+          apt install -y git << parameters.extra >>
+
+  install-gcc-4_8:
+    steps:
+    - run:
+        name: Install GCC 4.8
+        # For some reason, CMake needs a working C compiler, so provice CC as
+        # well for the case when default gcc isn't installed.
+        command: |
+          apt install -y g++-4.8
+          echo 'export CC=gcc-4.8' >> $BASH_ENV
+          echo 'export CXX=g++-4.8' >> $BASH_ENV
+
+jobs:
+  linux:
+    executor: ubuntu-16_04
+    steps:
+    - install-base-linux:
+        # heh
+        extra: time
+    - install-gcc-4_8
+    - checkout
+    - run:
+        name: Build all singles
+        command: |
+          export COMPILE="time g++-4.8 -std=c++11 -Wall -Wextra -pedantic"
+
+          cd test
+
+          # First page in the compiler so the following measurements are less wild
+          echo "int main() {}" | $COMPILE -x c++ - && ./a.out
+
+          $COMPILE CorradeArrayView.cpp && ./a.out
+          $COMPILE CorradeStridedArrayView.cpp && ./a.out
+          $COMPILE CorradeArray.cpp && ./a.out
+          $COMPILE CorradeOptional.cpp && ./a.out
+          $COMPILE CorradePointer.cpp && ./a.out
+          $COMPILE CorradeReference.cpp && ./a.out
+          $COMPILE CorradeScopeGuard.cpp && ./a.out
+          $COMPILE CorradeStlForwardArray.cpp && ./a.out
+          $COMPILE CorradeStlForwardString.cpp && ./a.out
+          $COMPILE CorradeStlForwardTuple.cpp && ./a.out
+          $COMPILE CorradeStlForwardVector.cpp && ./a.out
+          $COMPILE CorradeStlMath.cpp && ./a.out
+          $COMPILE MagnumMath.cpp && ./a.out
+
+workflows:
+  version: 2
+  build:
+    jobs:
+    - linux

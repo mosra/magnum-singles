@@ -1,7 +1,7 @@
 This repository contains single-header libraries from the Magnum engine.
 
 [![Join the chat at https://gitter.im/mosra/magnum](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/mosra/magnum?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
-[![Build Status](https://travis-ci.com/mosra/magnum-singles.svg?branch=master)](https://travis-ci.com/mosra/magnum-singles)
+[![Build Status](https://circleci.com/gh/mosra/magnum-singles.svg?style=shield)](https://circleci.com/gh/mosra/magnum-singles)
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
 -   Project homepage — https://magnum.graphics/
