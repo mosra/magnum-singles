@@ -107,8 +107,8 @@ All libraries are tested on these platforms:
 And on these compilers:
 
 -   **GCC** 4.8.1 and newer (and equivalent MinGW-w64 version)
--   **Clang** 3.3 and newer (and equivalent AppleClang version), both
-    `libstdc++` and `libc++`
+-   **Clang** 6.0 and newer (or AppleClang 10.0 and newer), both `libstdc++`
+    and `libc++`
 -   **MSVC** 2015 and newer
 
 CONTACT & SUPPORT
