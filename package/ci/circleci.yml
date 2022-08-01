@@ -1,15 +1,9 @@
 version: 2.1
 
-notify:
-  webhooks:
-    # Unfortunately Gitter messages are too verbose (one five-line message per
-    # each job in the build matrix) and thus not wanted
-    #- url: https://webhooks.gitter.im/e/cfbadbd34d28708a57c6
-
 executors:
-  ubuntu-16_04:
+  ubuntu-18_04:
     docker:
-    - image: ubuntu:xenial-20201014
+    - image: ubuntu:bionic-20220427
 
 commands:
   install-base-linux:
@@ -36,7 +30,7 @@ commands:
 
 jobs:
   linux:
-    executor: ubuntu-16_04
+    executor: ubuntu-18_04
     steps:
     - install-base-linux:
         # heh
