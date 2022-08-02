@@ -47,19 +47,32 @@ jobs:
           # First page in the compiler so the following measurements are less wild
           echo "int main() {}" | $COMPILE -x c++ - && ./a.out
 
-          $COMPILE CorradeArrayView.cpp && ./a.out
-          $COMPILE CorradeStridedArrayView.cpp && ./a.out
-          $COMPILE CorradeArray.cpp && ./a.out
-          $COMPILE CorradeOptional.cpp && ./a.out
-          $COMPILE CorradePointer.cpp && ./a.out
-          $COMPILE CorradeReference.cpp && ./a.out
-          $COMPILE CorradeScopeGuard.cpp && ./a.out
-          $COMPILE CorradeStlForwardArray.cpp && ./a.out
-          $COMPILE CorradeStlForwardString.cpp && ./a.out
-          $COMPILE CorradeStlForwardTuple.cpp && ./a.out
-          $COMPILE CorradeStlForwardVector.cpp && ./a.out
-          $COMPILE CorradeStlMath.cpp && ./a.out
-          $COMPILE MagnumMath.cpp && ./a.out
+          $COMPILE CorradeArrayView.cpp
+          ./a.out
+          $COMPILE CorradeStridedArrayView.cpp
+          ./a.out
+          $COMPILE CorradeArray.cpp
+          ./a.out
+          $COMPILE CorradeOptional.cpp
+          ./a.out
+          $COMPILE CorradePointer.cpp
+          ./a.out
+          $COMPILE CorradeReference.cpp
+          ./a.out
+          $COMPILE CorradeScopeGuard.cpp
+          ./a.out
+          $COMPILE CorradeStlForwardArray.cpp
+          ./a.out
+          $COMPILE CorradeStlForwardString.cpp
+          ./a.out
+          $COMPILE CorradeStlForwardTuple.cpp
+          ./a.out
+          $COMPILE CorradeStlForwardVector.cpp
+          ./a.out
+          $COMPILE CorradeStlMath.cpp
+          ./a.out
+          $COMPILE MagnumMath.cpp
+          ./a.out
 
 workflows:
   version: 2
