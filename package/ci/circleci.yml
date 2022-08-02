@@ -71,6 +71,8 @@ jobs:
           ./a.out
           $COMPILE CorradeStlMath.cpp
           ./a.out
+          $COMPILE CorradeCpu.cpp
+          ./a.out
           $COMPILE MagnumMath.cpp
           ./a.out
 
