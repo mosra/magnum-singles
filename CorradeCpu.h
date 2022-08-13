@@ -24,10 +24,12 @@
     #define CORRADE_UTILITY_EXPORT as appropriate. To enable the IFUNC
     functionality, #define CORRADE_CPU_USE_IFUNC before including the file.
 
+    v2020.06-1018-gef42a6 (2022-08-13)
+    -   Properly checking XSAVE prerequisites for AVX-512
     v2020.06-1015-g8cbd6 (2022-08-02)
     -   Initial release
 
-    Generated from Corrade v2020.06-1015-g8cbd6 (2022-08-02), 1646 / 2085 LoC
+    Generated from Corrade v2020.06-1018-gef42a6 (2022-08-13), 1652 / 2088 LoC
 */
 
 /*
@@ -1518,18 +1520,22 @@ inline Features runtimeFeatures() {
         #error
         #endif
 
-        if((xgetbv & 0x06) == 0x6)
+        if((xgetbv & 0x06) == 0x06 /* XSTATE_SSE|XSTATE_YMM */) {
             out |= TypeTraits<AvxT>::Index;
-    }
 
-    if(out & TypeTraits<AvxT>::Index) {
-        if(cpuid.e.cx & (1 << 29)) out |= TypeTraits<AvxF16cT>::Index;
-        if(cpuid.e.cx & (1 << 12)) out |= TypeTraits<AvxFmaT>::Index;
+            if(cpuid.e.cx & (1 << 29)) out |= TypeTraits<AvxF16cT>::Index;
+            if(cpuid.e.cx & (1 << 12)) out |= TypeTraits<AvxFmaT>::Index;
 
-        Implementation::cpuid(cpuid.data, 7, 0);
-        if(cpuid.e.bx & (1 << 3)) out |= TypeTraits<Bmi1T>::Index;
-        if(cpuid.e.bx & (1 << 5)) out |= TypeTraits<Avx2T>::Index;
-        if(cpuid.e.bx & (1 << 16)) out |= TypeTraits<Avx512fT>::Index;
+            Implementation::cpuid(cpuid.data, 7, 0);
+            if(cpuid.e.bx & (1 << 3)) out |= TypeTraits<Bmi1T>::Index;
+            if(cpuid.e.bx & (1 << 5)) out |= TypeTraits<Avx2T>::Index;
+        }
+
+        if((cpuid.e.bx & (1 << 16)) &&
+           (xgetbv & 0xe6) == 0xe6)
+        {
+            out |= TypeTraits<Avx512fT>::Index;
+        }
     }
 
     Implementation::cpuid(cpuid.data, 0x80000001, 0);
