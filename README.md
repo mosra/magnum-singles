@@ -72,6 +72,8 @@ are interested. Particular libraries are introduced on the Magnum blog:
     (Mar 28, 2019)
 -   [Multi-dimensional strided array views in Magnum](https://blog.magnum.graphics/backstage/multidimensional-strided-array-views/)
     (Apr 30, 2019)
+-   [Convenient CPU feature detection and dispatch](https://blog.magnum.graphics/backstage/cpu-feature-detection-dispatch/)
+    (Aug 2, 2022)
 
 What about test coverage?
 -------------------------
