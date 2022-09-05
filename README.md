@@ -56,7 +56,7 @@ With the goal being easy integration, the files are deliberately free of all
 comments and documentation blocks to keep their size small. Documentation for
 each library is provided in the official Magnum documentation, linked from the
 table above. Each library file contains the same documentation link, together
-with a concrete Git revision it was generated from a changelog for a few
+with a concrete Git revision it was generated from and a changelog for a few
 versions back for easier overview when updating.
 
 For more information read the [single-header library docs](https://doc.magnum.graphics/corrade/corrade-singles.html). The libraries are generated
