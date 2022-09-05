@@ -24,7 +24,8 @@
     DEALINGS IN THE SOFTWARE.
 */
 
-#include "../CorradeCpu.h"
+#define CORRADE_CPU_IMPLEMENTATION
+#include "../CorradeCpu.hpp"
 
 using namespace Corrade;
 
