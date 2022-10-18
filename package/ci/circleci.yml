@@ -53,6 +53,8 @@ jobs:
           ./a.out
           $COMPILE CorradeArray.cpp
           ./a.out
+          $COMPILE CorradeEnumSet.cpp
+          ./a.out
           $COMPILE CorradeOptional.cpp
           ./a.out
           $COMPILE CorradePointer.cpp
