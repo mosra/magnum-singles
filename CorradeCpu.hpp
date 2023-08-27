@@ -23,6 +23,13 @@
     `#define CORRADE_UTILITY_EXPORT` as appropriate. To enable the IFUNC
     functionality, `#define CORRADE_CPU_USE_IFUNC` before including the file.
 
+    v2020.06-1454-gfc3b7 (2023-08-27)
+    -   Added BMI2 detection on x86
+    -   Fixed an issue on GCC 12+ and Clang, where only one of multiple
+        CORRADE_ENABLE_ macro annotations would get used
+    -   Fixed a potential build issue on x86 if none of the extra instruction
+        sets are enabled at compile time
+    -   Compatibility with C++20 which removes the <ciso646> header
     v2020.06-1040-g30cd2 (2022-09-05)
     -   Fixed a build issue on platforms that are neither x86, ARM nor WASM
     -   Renamed to CorradeCpu.hpp to imply the separate implementation part
@@ -32,14 +39,14 @@
     v2020.06-1015-g8cbd6 (2022-08-02)
     -   Initial release
 
-    Generated from Corrade v2020.06-1040-g30cd2 (2022-09-05), 1658 / 2088 LoC
+    Generated from Corrade v2020.06-1454-gfc3b7 (2023-08-27), 1717 / 1993 LoC
 */
 
 /*
     This file is part of Corrade.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
-                2017, 2018, 2019, 2020, 2021, 2022
+                2017, 2018, 2019, 2020, 2021, 2022, 2023
               Vladimír Vondruš <mosra@centrum.cz>
 
     Permission is hereby granted, free of charge, to any person obtaining a
@@ -61,7 +68,6 @@
     DEALINGS IN THE SOFTWARE.
 */
 
-#include <ciso646>
 #include <type_traits>
 
 #ifdef __ANDROID__
@@ -109,6 +115,11 @@
 #define CORRADE_CXX_STANDARD __cplusplus
 #endif
 
+#if CORRADE_CXX_STANDARD >= 202002
+#include <version>
+#else
+#include <ciso646>
+#endif
 #ifdef _LIBCPP_VERSION
 #define CORRADE_TARGET_LIBCXX
 #elif defined(_CPPLIB_VER)
@@ -218,6 +229,9 @@
 #ifdef __BMI__
 #define CORRADE_TARGET_BMI1
 #endif
+#ifdef __BMI2__
+#define CORRADE_TARGET_BMI2
+#endif
 
 #elif defined(CORRADE_TARGET_MSVC)
 #ifdef __AVX__
@@ -231,6 +245,9 @@
 #endif
 #if !defined(CORRADE_TARGET_CLANG_CL) || defined(__BMI__)
 #define CORRADE_TARGET_BMI1
+#endif
+#if !defined(CORRADE_TARGET_CLANG_CL) || defined(__BMI2__)
+#define CORRADE_TARGET_BMI2
 #endif
 #endif
 #endif
@@ -382,6 +399,10 @@ struct Bmi1T {
     constexpr explicit Bmi1T(Implementation::InitT) {}
 };
 
+struct Bmi2T {
+    constexpr explicit Bmi2T(Implementation::InitT) {}
+};
+
 struct AvxT: Sse42T {
     constexpr explicit AvxT(Implementation::InitT): Sse42T{Implementation::Init} {}
 };
@@ -447,12 +468,16 @@ template<> struct TypeTraits<Bmi1T> {
     enum: unsigned int { Index = 1 << (2 + Implementation::ExtraTagBitOffset) };
     static const char* name() { return "Bmi1"; }
 };
-template<> struct TypeTraits<AvxF16cT> {
+template<> struct TypeTraits<Bmi2T> {
     enum: unsigned int { Index = 1 << (3 + Implementation::ExtraTagBitOffset) };
+    static const char* name() { return "Bmi2"; }
+};
+template<> struct TypeTraits<AvxF16cT> {
+    enum: unsigned int { Index = 1 << (4 + Implementation::ExtraTagBitOffset) };
     static const char* name() { return "AvxF16c"; }
 };
 template<> struct TypeTraits<AvxFmaT> {
-    enum: unsigned int { Index = 1 << (4 + Implementation::ExtraTagBitOffset) };
+    enum: unsigned int { Index = 1 << (5 + Implementation::ExtraTagBitOffset) };
     static const char* name() { return "AvxFma"; }
 };
 #endif
@@ -514,6 +539,8 @@ constexpr LzcntT Lzcnt{Implementation::Init};
 
 constexpr Bmi1T Bmi1{Implementation::Init};
 
+constexpr Bmi2T Bmi2{Implementation::Init};
+
 constexpr AvxT Avx{Implementation::Init};
 
 constexpr AvxF16cT AvxF16c{Implementation::Init};
@@ -546,7 +573,7 @@ enum: unsigned int {
     BaseTagMask = (1 << ExtraTagBitOffset) - 1,
     ExtraTagMask = 0xffffffffu & ~BaseTagMask,
     #ifdef CORRADE_TARGET_X86
-    ExtraTagCount = 5,
+    ExtraTagCount = 6,
     #else
     ExtraTagCount = 0,
     #endif
@@ -638,7 +665,7 @@ template<unsigned short A> struct BitCount {
     };
 };
 
-template<class T> Priority<(TypeTraits<T>::Index & ExtraTagMask ? 1 : BitIndex<TypeTraits<T>::Index & BaseTagMask>::Value*(ExtraTagCount + 1))> constexpr priority(T) {
+template<class T> Priority<(static_cast<unsigned int>(TypeTraits<T>::Index) & ExtraTagMask ? 1 : BitIndex<static_cast<unsigned int>(TypeTraits<T>::Index) & BaseTagMask>::Value*(ExtraTagCount + 1))> constexpr priority(T) {
     return {};
 }
 template<unsigned int value> Priority<(BitIndex<value & BaseTagMask>::Value*(ExtraTagCount + 1) + BitCount<((value & ExtraTagMask) >> ExtraTagBitOffset)>::Value)> constexpr priority(Tags<value>) {
@@ -694,27 +721,30 @@ typedef
     #endif
     DefaultBaseT;
 
-typedef Implementation::Tags<
+typedef Implementation::Tags<0
     #ifdef CORRADE_TARGET_X86
     #ifdef CORRADE_TARGET_POPCNT
-    TypeTraits<PopcntT>::Index|
+    |TypeTraits<PopcntT>::Index
     #endif
     #ifdef CORRADE_TARGET_LZCNT
-    TypeTraits<LzcntT>::Index|
+    |TypeTraits<LzcntT>::Index
     #endif
     #ifdef CORRADE_TARGET_BMI1
-    TypeTraits<Bmi1T>::Index|
+    |TypeTraits<Bmi1T>::Index
+    #endif
+    #ifdef CORRADE_TARGET_BMI2
+    |TypeTraits<Bmi2T>::Index
     #endif
     #ifdef CORRADE_TARGET_AVX_FMA
-    TypeTraits<AvxFmaT>::Index|
+    |TypeTraits<AvxFmaT>::Index
     #endif
     #ifdef CORRADE_TARGET_AVX_F16C
-    TypeTraits<AvxF16cT>::Index|
+    |TypeTraits<AvxF16cT>::Index
     #endif
     #endif
-    0> DefaultExtraT;
+    > DefaultExtraT;
 
-typedef Implementation::Tags<TypeTraits<DefaultBaseT>::Index|DefaultExtraT::Value> DefaultT;
+typedef Implementation::Tags<static_cast<unsigned int>(TypeTraits<DefaultBaseT>::Index)|DefaultExtraT::Value> DefaultT;
 
 constexpr DefaultBaseT DefaultBase{Implementation::Init};
 
@@ -735,7 +765,7 @@ class Features {
         constexpr explicit Features() noexcept: _data{} {}
 
         template<class T, class = decltype(TypeTraits<T>::Index)> constexpr /*implicit*/ Features(T) noexcept: _data{TypeTraits<T>::Index} {
-            static_assert(((TypeTraits<T>::Index & Implementation::ExtraTagMask) >> Implementation::ExtraTagBitOffset) < (1 << static_cast<unsigned int>(Implementation::ExtraTagCount)),
+            static_assert(((static_cast<unsigned int>(TypeTraits<T>::Index) & Implementation::ExtraTagMask) >> Implementation::ExtraTagBitOffset) < (1 << static_cast<unsigned int>(Implementation::ExtraTagCount)),
                 "extra tag out of expected bounds");
         }
 
@@ -819,8 +849,16 @@ template<class T, class = decltype(TypeTraits<T>::Index)> constexpr bool operato
     return Features(a) == b;
 }
 
+template<class T, class U, class = decltype(TypeTraits<T>::Index), class = decltype(TypeTraits<U>::Index)> constexpr bool operator==(T, U) {
+    return static_cast<unsigned int>(TypeTraits<T>::Index) == TypeTraits<U>::Index;
+}
+
 template<class T, class = decltype(TypeTraits<T>::Index)> constexpr bool operator!=(T a, Features b) {
     return Features(a) != b;
+}
+
+template<class T, class U, class = decltype(TypeTraits<T>::Index), class = decltype(TypeTraits<U>::Index)> constexpr bool operator!=(T, U) {
+    return static_cast<unsigned int>(TypeTraits<T>::Index) != TypeTraits<U>::Index;
 }
 
 template<class T, class = decltype(TypeTraits<T>::Index)> constexpr bool operator>=(T a, Features b) {
@@ -835,8 +873,8 @@ template<class T, class = decltype(TypeTraits<T>::Index)> constexpr Features ope
     return b | a;
 }
 
-template<class T, class U> constexpr Implementation::Tags<TypeTraits<T>::Index | TypeTraits<U>::Index> operator|(T, U) {
-    return Implementation::Tags<TypeTraits<T>::Index | TypeTraits<U>::Index>{Implementation::Init};
+template<class T, class U> constexpr Implementation::Tags<static_cast<unsigned int>(TypeTraits<T>::Index) | TypeTraits<U>::Index> operator|(T, U) {
+    return Implementation::Tags<static_cast<unsigned int>(TypeTraits<T>::Index) | TypeTraits<U>::Index>{Implementation::Init};
 }
 template<class T, unsigned int value> constexpr Implementation::Tags<TypeTraits<T>::Index | value> operator|(T, Implementation::Tags<value>) {
     return Implementation::Tags<TypeTraits<T>::Index | value>{Implementation::Init};
@@ -846,8 +884,8 @@ template<class T, class = decltype(TypeTraits<T>::Index)> constexpr Features ope
     return b & a;
 }
 
-template<class T, class U> constexpr Implementation::Tags<TypeTraits<T>::Index & TypeTraits<U>::Index> operator&(T, U) {
-    return Implementation::Tags<TypeTraits<T>::Index & TypeTraits<U>::Index>{Implementation::Init};
+template<class T, class U> constexpr Implementation::Tags<static_cast<unsigned int>(TypeTraits<T>::Index) & TypeTraits<U>::Index> operator&(T, U) {
+    return Implementation::Tags<static_cast<unsigned int>(TypeTraits<T>::Index) & TypeTraits<U>::Index>{Implementation::Init};
 }
 template<class T, unsigned int value> constexpr Implementation::Tags<TypeTraits<T>::Index & value> operator&(T, Implementation::Tags<value>) {
     return Implementation::Tags<TypeTraits<T>::Index & value>{Implementation::Init};
@@ -857,8 +895,8 @@ template<class T, class = decltype(TypeTraits<T>::Index)> constexpr Features ope
     return b ^ a;
 }
 
-template<class T, class U> constexpr Implementation::Tags<TypeTraits<T>::Index ^ TypeTraits<U>::Index> operator^(T, U) {
-    return Implementation::Tags<TypeTraits<T>::Index ^ TypeTraits<U>::Index>{Implementation::Init};
+template<class T, class U> constexpr Implementation::Tags<static_cast<unsigned int>(TypeTraits<T>::Index) ^ TypeTraits<U>::Index> operator^(T, U) {
+    return Implementation::Tags<static_cast<unsigned int>(TypeTraits<T>::Index) ^ TypeTraits<U>::Index>{Implementation::Init};
 }
 template<class T, unsigned int value> constexpr Implementation::Tags<TypeTraits<T>::Index ^ value> operator^(T, Implementation::Tags<value>) {
     return Implementation::Tags<TypeTraits<T>::Index ^ value>{Implementation::Init};
@@ -869,62 +907,68 @@ template<class T> constexpr Implementation::Tags<~TypeTraits<T>::Index> operator
 }
 
 constexpr Features compiledFeatures() {
-    return Features{
+    return Features{0
         #ifdef CORRADE_TARGET_X86
         #ifdef CORRADE_TARGET_SSE2
-        TypeTraits<Sse2T>::Index|
+        |TypeTraits<Sse2T>::Index
         #endif
         #ifdef CORRADE_TARGET_SSE3
-        TypeTraits<Sse3T>::Index|
+        |TypeTraits<Sse3T>::Index
         #endif
         #ifdef CORRADE_TARGET_SSSE3
-        TypeTraits<Ssse3T>::Index|
+        |TypeTraits<Ssse3T>::Index
         #endif
         #ifdef CORRADE_TARGET_SSE41
-        TypeTraits<Sse41T>::Index|
+        |TypeTraits<Sse41T>::Index
         #endif
         #ifdef CORRADE_TARGET_SSE42
-        TypeTraits<Sse42T>::Index|
+        |TypeTraits<Sse42T>::Index
         #endif
         #ifdef CORRADE_TARGET_POPCNT
-        TypeTraits<PopcntT>::Index|
+        |TypeTraits<PopcntT>::Index
         #endif
         #ifdef CORRADE_TARGET_LZCNT
-        TypeTraits<LzcntT>::Index|
+        |TypeTraits<LzcntT>::Index
         #endif
         #ifdef CORRADE_TARGET_BMI1
-        TypeTraits<Bmi1T>::Index|
+        |TypeTraits<Bmi1T>::Index
+        #endif
+        #ifdef CORRADE_TARGET_BMI2
+        |TypeTraits<Bmi2T>::Index
         #endif
         #ifdef CORRADE_TARGET_AVX
-        TypeTraits<AvxT>::Index|
+        |TypeTraits<AvxT>::Index
         #endif
         #ifdef CORRADE_TARGET_AVX_FMA
-        TypeTraits<AvxFmaT>::Index|
+        |TypeTraits<AvxFmaT>::Index
         #endif
         #ifdef CORRADE_TARGET_AVX_F16C
-        TypeTraits<AvxF16cT>::Index|
+        |TypeTraits<AvxF16cT>::Index
         #endif
         #ifdef CORRADE_TARGET_AVX2
-        TypeTraits<Avx2T>::Index|
+        |TypeTraits<Avx2T>::Index
+        #endif
+        #ifdef CORRADE_TARGET_AVX512F
+        |TypeTraits<Avx512fT>::Index
         #endif
 
         #elif defined(CORRADE_TARGET_ARM)
         #ifdef CORRADE_TARGET_NEON
-        TypeTraits<NeonT>::Index|
+        |TypeTraits<NeonT>::Index
         #endif
         #ifdef CORRADE_TARGET_NEON_FMA
-        TypeTraits<NeonFmaT>::Index|
+        |TypeTraits<NeonFmaT>::Index
         #endif
         #ifdef CORRADE_TARGET_NEON_FP16
-        TypeTraits<NeonFp16T>::Index|
+        |TypeTraits<NeonFp16T>::Index
         #endif
 
         #elif defined(CORRADE_TARGET_WASM)
         #ifdef CORRADE_TARGET_SIMD128
-        TypeTraits<Simd128T>::Index|
+        |TypeTraits<Simd128T>::Index
         #endif
         #endif
-        0};
+        };
 }
 
 #if (defined(CORRADE_TARGET_X86) && (defined(CORRADE_TARGET_MSVC) || defined(CORRADE_TARGET_GCC))) || (defined(CORRADE_TARGET_ARM) && ((defined(__linux__) && !(defined(CORRADE_TARGET_ANDROID) && __ANDROID_API__ < 18)) || defined(CORRADE_TARGET_APPLE)))
@@ -1114,12 +1158,12 @@ constexpr Features runtimeFeatures() { return compiledFeatures(); }
 #ifdef CORRADE_TARGET_X86
 #ifdef CORRADE_TARGET_SSE2
 #define CORRADE_ENABLE_SSE2
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_SSE2
 #endif
 #elif defined(CORRADE_TARGET_GCC) || defined(CORRADE_TARGET_CLANG_CL)
 #define CORRADE_ENABLE_SSE2 __attribute__((__target__("sse2")))
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_SSE2 "sse2",
 #endif
 #elif defined(CORRADE_TARGET_MSVC)
@@ -1128,12 +1172,12 @@ constexpr Features runtimeFeatures() { return compiledFeatures(); }
 
 #ifdef CORRADE_TARGET_SSE3
 #define CORRADE_ENABLE_SSE3
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_SSE3
 #endif
 #elif defined(CORRADE_TARGET_GCC) || defined(CORRADE_TARGET_CLANG_CL)
 #define CORRADE_ENABLE_SSE3 __attribute__((__target__("sse3")))
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_SSE3 "sse3",
 #endif
 #elif defined(CORRADE_TARGET_MSVC)
@@ -1142,12 +1186,12 @@ constexpr Features runtimeFeatures() { return compiledFeatures(); }
 
 #ifdef CORRADE_TARGET_SSSE3
 #define CORRADE_ENABLE_SSSE3
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_SSSE3
 #endif
 #elif defined(CORRADE_TARGET_GCC) || defined(CORRADE_TARGET_CLANG_CL)
 #define CORRADE_ENABLE_SSSE3 __attribute__((__target__("ssse3")))
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_SSSE3 "ssse3",
 #endif
 #elif defined(CORRADE_TARGET_MSVC)
@@ -1156,12 +1200,12 @@ constexpr Features runtimeFeatures() { return compiledFeatures(); }
 
 #ifdef CORRADE_TARGET_SSE41
 #define CORRADE_ENABLE_SSE41
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_SSE41
 #endif
 #elif (defined(CORRADE_TARGET_GCC) && __GNUC__*100 + __GNUC_MINOR__ >= 409) || defined(CORRADE_TARGET_CLANG) /* also matches clang-cl */
 #define CORRADE_ENABLE_SSE41 __attribute__((__target__("sse4.1")))
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_SSE41 "sse4.1",
 #endif
 #elif defined(CORRADE_TARGET_MSVC)
@@ -1170,12 +1214,12 @@ constexpr Features runtimeFeatures() { return compiledFeatures(); }
 
 #ifdef CORRADE_TARGET_SSE42
 #define CORRADE_ENABLE_SSE42
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_SSE42
 #endif
 #elif defined(CORRADE_TARGET_GCC) || defined(CORRADE_TARGET_CLANG_CL)
 #define CORRADE_ENABLE_SSE42 __attribute__((__target__("sse4.2")))
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_SSE42 "sse4.2",
 #endif
 #elif defined(CORRADE_TARGET_MSVC)
@@ -1184,12 +1228,12 @@ constexpr Features runtimeFeatures() { return compiledFeatures(); }
 
 #ifdef CORRADE_TARGET_POPCNT
 #define CORRADE_ENABLE_POPCNT
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_POPCNT
 #endif
 #elif (defined(CORRADE_TARGET_GCC) && __GNUC__*100 + __GNUC_MINOR__ >= 409) || defined(CORRADE_TARGET_CLANG) /* matches clang-cl */
 #define CORRADE_ENABLE_POPCNT __attribute__((__target__("popcnt")))
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_POPCNT "popcnt",
 #endif
 #elif defined(CORRADE_TARGET_MSVC)
@@ -1198,12 +1242,12 @@ constexpr Features runtimeFeatures() { return compiledFeatures(); }
 
 #ifdef CORRADE_TARGET_LZCNT
 #define CORRADE_ENABLE_LZCNT
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_LZCNT
 #endif
 #elif defined(CORRADE_TARGET_GCC) && (__GNUC__*100 + __GNUC_MINOR__ >= 409 || defined(CORRADE_TARGET_CLANG)) /* does not match clang-cl */
 #define CORRADE_ENABLE_LZCNT __attribute__((__target__("lzcnt")))
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_LZCNT "lzcnt",
 #endif
 #elif defined(CORRADE_TARGET_MSVC) && !defined(CORRADE_TARGET_CLANG_CL)
@@ -1212,26 +1256,40 @@ constexpr Features runtimeFeatures() { return compiledFeatures(); }
 
 #ifdef CORRADE_TARGET_BMI1
 #define CORRADE_ENABLE_BMI1
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_BMI1
 #endif
 #elif defined(CORRADE_TARGET_GCC) && (__GNUC__*100 + __GNUC_MINOR__ >= 409 || defined(CORRADE_TARGET_CLANG)) /* does not match clang-cl */
 #define CORRADE_ENABLE_BMI1 __attribute__((__target__("bmi")))
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_BMI1 "bmi",
 #endif
 #elif defined(CORRADE_TARGET_MSVC) && !defined(CORRADE_TARGET_CLANG_CL)
 #define CORRADE_ENABLE_BMI1
 #endif
 
+#ifdef CORRADE_TARGET_BMI2
+#define CORRADE_ENABLE_BMI2
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
+#define _CORRADE_ENABLE_BMI2
+#endif
+#elif defined(CORRADE_TARGET_GCC) && (__GNUC__*100 + __GNUC_MINOR__ >= 409 || defined(CORRADE_TARGET_CLANG)) /* does not match clang-cl */
+#define CORRADE_ENABLE_BMI2 __attribute__((__target__("bmi2")))
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
+#define _CORRADE_ENABLE_BMI2 "bmi2",
+#endif
+#elif defined(CORRADE_TARGET_MSVC) && !defined(CORRADE_TARGET_CLANG_CL)
+#define CORRADE_ENABLE_BMI2
+#endif
+
 #ifdef CORRADE_TARGET_AVX
 #define CORRADE_ENABLE_AVX
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_AVX
 #endif
 #elif defined(CORRADE_TARGET_GCC) /* does not match clang-cl */
 #define CORRADE_ENABLE_AVX __attribute__((__target__("avx")))
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_AVX "avx",
 #endif
 #elif defined(CORRADE_TARGET_MSVC) && !defined(CORRADE_TARGET_CLANG_CL)
@@ -1240,12 +1298,12 @@ constexpr Features runtimeFeatures() { return compiledFeatures(); }
 
 #ifdef CORRADE_TARGET_AVX_F16C
 #define CORRADE_ENABLE_AVX_F16C
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_AVX_F16C
 #endif
 #elif defined(CORRADE_TARGET_GCC) && (__GNUC__*100 + __GNUC_MINOR__ >= 409 || defined(CORRADE_TARGET_CLANG)) /* does not match clang-cl */
 #define CORRADE_ENABLE_AVX_F16C __attribute__((__target__("f16c")))
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_AVX_F16C "f16c",
 #endif
 #elif defined(CORRADE_TARGET_MSVC) && !defined(CORRADE_TARGET_CLANG_CL)
@@ -1254,12 +1312,12 @@ constexpr Features runtimeFeatures() { return compiledFeatures(); }
 
 #ifdef CORRADE_TARGET_AVX_FMA
 #define CORRADE_ENABLE_AVX_FMA
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_AVX_FMA
 #endif
 #elif defined(CORRADE_TARGET_GCC) && (__GNUC__*100 + __GNUC_MINOR__ >= 409 || defined(CORRADE_TARGET_CLANG)) /* does not match clang-cl */
 #define CORRADE_ENABLE_AVX_FMA __attribute__((__target__("fma")))
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_AVX_FMA "fma",
 #endif
 #elif defined(CORRADE_TARGET_MSVC) && !defined(CORRADE_TARGET_CLANG_CL)
@@ -1268,12 +1326,12 @@ constexpr Features runtimeFeatures() { return compiledFeatures(); }
 
 #ifdef CORRADE_TARGET_AVX2
 #define CORRADE_ENABLE_AVX2
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_AVX2
 #endif
 #elif defined(CORRADE_TARGET_GCC) /* does not match clang-cl */
 #define CORRADE_ENABLE_AVX2 __attribute__((__target__("avx2")))
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_AVX2 "avx2",
 #endif
 #elif defined(CORRADE_TARGET_MSVC) && !defined(CORRADE_TARGET_CLANG_CL)
@@ -1282,12 +1340,12 @@ constexpr Features runtimeFeatures() { return compiledFeatures(); }
 
 #ifdef CORRADE_TARGET_AVX512F
 #define CORRADE_ENABLE_AVX512F
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_AVX512F
 #endif
 #elif defined(CORRADE_TARGET_GCC) && (__GNUC__*100 + __GNUC_MINOR__ >= 409 || defined(CORRADE_TARGET_CLANG)) /* does not match clang-cl */
 #define CORRADE_ENABLE_AVX512F __attribute__((__target__("avx512f")))
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_AVX512F "avx512f",
 #endif
 #elif defined(CORRADE_TARGET_MSVC) && _MSC_VER >= 1911 && !defined(CORRADE_TARGET_CLANG_CL)
@@ -1298,12 +1356,12 @@ constexpr Features runtimeFeatures() { return compiledFeatures(); }
 #ifdef CORRADE_TARGET_ARM
 #ifdef CORRADE_TARGET_NEON
 #define CORRADE_ENABLE_NEON
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_NEON
 #endif
 #elif defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG)
 #define CORRADE_ENABLE_NEON __attribute__((__target__("fpu=neon")))
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_NEON "fpu=neon",
 #endif
 #elif defined(CORRADE_TARGET_MSVC)
@@ -1312,12 +1370,12 @@ constexpr Features runtimeFeatures() { return compiledFeatures(); }
 
 #ifdef CORRADE_TARGET_NEON_FMA
 #define CORRADE_ENABLE_NEON_FMA
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_NEON_FMA
 #endif
 #elif defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG)
 #define CORRADE_ENABLE_NEON_FMA __attribute__((__target__("fpu=neon-vfpv4")))
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_NEON_FMA "fpu=neon-vfpv4",
 #endif
 #elif defined(CORRADE_TARGET_MSVC)
@@ -1326,12 +1384,12 @@ constexpr Features runtimeFeatures() { return compiledFeatures(); }
 
 #ifdef CORRADE_TARGET_NEON_FP16
 #define CORRADE_ENABLE_NEON_FP16
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_NEON_FP16
 #endif
 #elif defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG)
 #define CORRADE_ENABLE_NEON_FP16 __attribute__((__target__("arch=armv8.2-a+fp16")))
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_NEON_FP16 "arch=armv8.2-a+fp16",
 #endif
 #elif defined(CORRADE_TARGET_MSVC)
@@ -1342,13 +1400,13 @@ constexpr Features runtimeFeatures() { return compiledFeatures(); }
 #ifdef CORRADE_TARGET_WASM
 #ifdef CORRADE_TARGET_SIMD128
 #define CORRADE_ENABLE_SIMD128
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_SIMD128
 #endif
 #endif
 #endif
 
-#if defined(CORRADE_TARGET_GCC) && (!defined(CORRADE_TARGET_CLANG) || __clang_major__ < 8)
+#if (defined(CORRADE_TARGET_GCC) && __GNUC__ < 12) || defined(CORRADE_TARGET_CLANG)
 #define _CORRADE_ENABLE_CONCATENATE0(unused)
 #define _CORRADE_ENABLE_CONCATENATE1(v0, unused)                            \
     __attribute__((__target__(v0)))
@@ -1415,7 +1473,7 @@ constexpr Features runtimeFeatures() { return compiledFeatures(); }
         _CORRADE_ENABLE_ ## v5                                              \
         _CORRADE_ENABLE_ ## v6                                              \
     )
-#elif defined(CORRADE_TARGET_CLANG) || !defined(CORRADE_TARGET_MSVC)
+#elif defined(CORRADE_TARGET_GCC) || !defined(CORRADE_TARGET_MSVC)
 #define _CORRADE_ENABLE1(v0)                                                \
     _CORRADE_HELPER_PASTE2(CORRADE_ENABLE_, v0)
 #define _CORRADE_ENABLE2(v0, v1)                                            \
@@ -1535,6 +1593,7 @@ inline Features runtimeFeatures() {
             Implementation::cpuid(cpuid.data, 7, 0);
             if(cpuid.e.bx & (1 << 3)) out |= TypeTraits<Bmi1T>::Index;
             if(cpuid.e.bx & (1 << 5)) out |= TypeTraits<Avx2T>::Index;
+            if(cpuid.e.bx & (1 << 8)) out |= TypeTraits<Bmi2T>::Index;
         }
 
         if((cpuid.e.bx & (1 << 16)) &&

@@ -13,17 +13,22 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    v2020.06-1454-gfc3b7 (2023-08-27)
+    -   Compatibility with libc++ 16 and newer and libstdc++ 12 and newer which
+        have the std::tuple forward declaration in a different header
+    -   Compatibility with C++20 which removes the <ciso646> header
     v2019.01-115-ged348b26 (2019-03-27)
     -   Initial release
 
-    Generated from Corrade v2020.06-0-g61d1b58c (2020-06-27), 78 / 1739 LoC
+    Generated from Corrade v2020.06-1454-gfc3b7 (2023-08-27), 102 / 2228 LoC
 */
 
 /*
     This file is part of Corrade.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
-                2017, 2018, 2019, 2020 Vladimír Vondruš <mosra@centrum.cz>
+                2017, 2018, 2019, 2020, 2021, 2022, 2023
+              Vladimír Vondruš <mosra@centrum.cz>
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the "Software"),
@@ -44,8 +49,20 @@
     DEALINGS IN THE SOFTWARE.
 */
 
+#ifdef _MSC_VER
+#ifdef _MSVC_LANG
+#define CORRADE_CXX_STANDARD _MSVC_LANG
+#else
+#define CORRADE_CXX_STANDARD 201103L
+#endif
+#else
+#define CORRADE_CXX_STANDARD __cplusplus
+#endif
+#if CORRADE_CXX_STANDARD >= 202002
+#include <version>
+#else
 #include <ciso646>
-
+#endif
 #ifdef _LIBCPP_VERSION
 #define CORRADE_TARGET_LIBCXX
 #elif defined(_CPPLIB_VER)
@@ -66,11 +83,18 @@
 #define Corrade_Utility_StlForwardTuple_h
 
 #ifdef CORRADE_TARGET_LIBCXX
+#if _LIBCPP_VERSION < 160000
 #include <__tuple>
+#else
+#include <__fwd/tuple.h>
+#endif
 #elif defined(CORRADE_TARGET_LIBSTDCXX)
+#if _GLIBCXX_RELEASE >= 7 && _GLIBCXX_RELEASE < 12
 #include <type_traits>
-#elif defined(CORRADE_TARGET_DINKUMWARE)
+#else
 #include <utility>
+#endif
+#elif defined(CORRADE_TARGET_DINKUMWARE)
 #else
 #include <tuple>
 #endif

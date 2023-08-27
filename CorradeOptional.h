@@ -13,6 +13,14 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    v2020.06-1454-gfc3b7 (2023-08-27)
+    -   The InPlaceInit tag is moved from Containers to the root namespace
+    -   The underlying type is exposed in a new Optional::Type typedef
+    -   Working around false-positive uninitialized value warnings in GCC 10+
+    -   Further workarounds for various compiler-specific issues and standard
+        defects when using {}-initialization for aggregate types
+    -   Removed dependency on <utility>, resulting in about ~600 preprocessed
+        lines less
     v2020.06-0-g61d1b58c (2020-06-27)
     -   Working around various compiler-specific issues and standard defects
         when using {}-initialization for aggregate types
@@ -26,14 +34,15 @@
     v2018.10-183-g4eb1adc0 (2019-01-23)
     -   Initial release
 
-    Generated from Corrade v2020.06-0-g61d1b58c (2020-06-27), 358 / 2883 LoC
+    Generated from Corrade v2020.06-1454-gfc3b7 (2023-08-27), 434 / 1877 LoC
 */
 
 /*
     This file is part of Corrade.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
-                2017, 2018, 2019, 2020 Vladimír Vondruš <mosra@centrum.cz>
+                2017, 2018, 2019, 2020, 2021, 2022, 2023
+              Vladimír Vondruš <mosra@centrum.cz>
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the "Software"),
@@ -56,7 +65,6 @@
 
 #include <new>
 #include <type_traits>
-#include <utility>
 #if !defined(CORRADE_ASSERT) && !defined(NDEBUG)
 #include <cassert>
 #endif
@@ -64,39 +72,42 @@
 #ifdef __GNUC__
 #define CORRADE_TARGET_GCC
 #endif
+#ifdef __clang__
+#define CORRADE_TARGET_CLANG
+#endif
 
-#ifndef Corrade_Containers_Tags_h
-#define Corrade_Containers_Tags_h
+#ifndef Corrade_Tags_h
+#define Corrade_Tags_h
 
-namespace Corrade { namespace Containers {
+namespace Corrade {
 
 struct DefaultInitT {
-    struct Init{};
+    struct Init {};
     constexpr explicit DefaultInitT(Init) {}
 };
 
 struct ValueInitT {
-    struct Init{};
+    struct Init {};
     constexpr explicit ValueInitT(Init) {}
 };
 
 struct NoInitT {
-    struct Init{};
+    struct Init {};
     constexpr explicit NoInitT(Init) {}
 };
 
 struct NoCreateT {
-    struct Init{};
+    struct Init {};
     constexpr explicit NoCreateT(Init) {}
 };
 
 struct DirectInitT {
-    struct Init{};
+    struct Init {};
     constexpr explicit DirectInitT(Init) {}
 };
 
 struct InPlaceInitT {
-    struct Init{};
+    struct Init {};
     constexpr explicit InPlaceInitT(Init) {}
 };
 
@@ -112,6 +123,38 @@ constexpr DirectInitT DirectInit{DirectInitT::Init{}};
 
 constexpr InPlaceInitT InPlaceInit{InPlaceInitT::Init{}};
 
+}
+
+#endif
+#ifndef Corrade_Utility_Move_h
+#define Corrade_Utility_Move_h
+
+namespace Corrade { namespace Utility {
+
+template<class T> constexpr T&& forward(typename std::remove_reference<T>::type& t) noexcept {
+    return static_cast<T&&>(t);
+}
+
+template<class T> constexpr T&& forward(typename std::remove_reference<T>::type&& t) noexcept {
+    static_assert(!std::is_lvalue_reference<T>::value, "T can't be a lvalue reference");
+    return static_cast<T&&>(t);
+}
+
+template<class T> constexpr typename std::remove_reference<T>::type&& move(T&& t) noexcept {
+    return static_cast<typename std::remove_reference<T>::type&&>(t);
+}
+
+template<class T> void swap(T& a, T& b) noexcept(std::is_nothrow_move_constructible<T>::value && std::is_nothrow_move_assignable<T>::value) {
+    T tmp = static_cast<T&&>(a);
+    a = static_cast<T&&>(b);
+    b = static_cast<T&&>(tmp);
+}
+template<class T> void swap(T*& a, T*& b) noexcept {
+    T* tmp = a;
+    a = b;
+    b = tmp;
+}
+
 }}
 
 #endif
@@ -121,15 +164,18 @@ constexpr InPlaceInitT InPlaceInit{InPlaceInitT::Init{}};
 namespace Corrade { namespace Containers { namespace Implementation {
 
 template<class T, class First, class ...Next> inline void construct(T& value, First&& first, Next&& ...next) {
-    new(&value) T{std::forward<First>(first), std::forward<Next>(next)...};
+    new(&value) T{Utility::forward<First>(first), Utility::forward<Next>(next)...};
 }
 template<class T> inline void construct(T& value) {
     new(&value) T();
 }
 
-#if defined(CORRADE_TARGET_GCC) && __GNUC__ < 5
+#if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG) && __GNUC__ < 5
+template<class T> inline void construct(T& value, const T& b) {
+    new(&value) T(b);
+}
 template<class T> inline void construct(T& value, T&& b) {
-    new(&value) T(std::move(b));
+    new(&value) T(Utility::move(b));
 }
 #endif
 
@@ -138,10 +184,14 @@ template<class T> inline void construct(T& value, T&& b) {
 #endif
 #ifndef CORRADE_ASSERT
 #ifdef NDEBUG
-#define CORRADE_ASSERT(condition, message, returnValue) do {} while(0)
+#define CORRADE_ASSERT(condition, message, returnValue) do {} while(false)
 #else
 #define CORRADE_ASSERT(condition, message, returnValue) assert(condition)
 #endif
+#endif
+#ifndef CORRADE_DEBUG_ASSERT
+#define CORRADE_DEBUG_ASSERT(condition, message, returnValue)               \
+    CORRADE_ASSERT(condition, message, returnValue)
 #endif
 #ifndef Corrade_Containers_Optional_h
 #define Corrade_Containers_Optional_h
@@ -161,23 +211,33 @@ constexpr NullOptT NullOpt{NullOptT::Init{}};
 
 template<class T> class Optional {
     public:
+        typedef T Type;
+
         /*implicit*/ Optional(NullOptT = NullOpt) noexcept: _set{false} {}
 
-        /*implicit*/ Optional(const T& value) noexcept(std::is_nothrow_copy_assignable<T>::value): _set{true} {
+        /*implicit*/ Optional(const T& value) noexcept(std::is_nothrow_copy_constructible<T>::value): _set{true} {
+            #if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG) && __GNUC__ < 5
+            Implementation::construct(_value, value);
+            #else
             new(&_value) T{value};
+            #endif
         }
 
-        /*implicit*/ Optional(T&& value) noexcept(std::is_nothrow_move_assignable<T>::value): _set{true} {
-            new(&_value) T{std::move(value)};
+        /*implicit*/ Optional(T&& value) noexcept(std::is_nothrow_move_constructible<T>::value): _set{true} {
+            #if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG) && __GNUC__ < 5
+            Implementation::construct(_value, Utility::move(value));
+            #else
+            new(&_value) T{Utility::move(value)};
+            #endif
         }
 
-        template<class ...Args> /*implicit*/ Optional(InPlaceInitT, Args&&... args) noexcept(std::is_nothrow_constructible<T, Args&&...>::value): _set{true} {
-            Implementation::construct(_value, std::forward<Args>(args)...);
+        template<class ...Args> /*implicit*/ Optional(Corrade::InPlaceInitT, Args&&... args) noexcept(std::is_nothrow_constructible<T, Args&&...>::value): _set{true} {
+            Implementation::construct(_value, Utility::forward<Args>(args)...);
         }
 
         template<class U, class = decltype(Implementation::OptionalConverter<T, U>::from(std::declval<const U&>()))> explicit Optional(const U& other) noexcept(std::is_nothrow_copy_constructible<T>::value): Optional{Implementation::OptionalConverter<T, U>::from(other)} {}
 
-        template<class U, class = decltype(Implementation::OptionalConverter<T, U>::from(std::declval<U&&>()))> explicit Optional(U&& other) noexcept(std::is_nothrow_move_constructible<T>::value): Optional{Implementation::OptionalConverter<T, U>::from(std::move(other))} {}
+        template<class U, class = decltype(Implementation::OptionalConverter<T, U>::from(std::declval<U&&>()))> explicit Optional(U&& other) noexcept(std::is_nothrow_move_constructible<T>::value): Optional{Implementation::OptionalConverter<T, U>::from(Utility::move(other))} {}
 
         Optional(const Optional<T>& other) noexcept(std::is_nothrow_copy_constructible<T>::value);
 
@@ -192,7 +252,7 @@ template<class T> class Optional {
         }
 
         template<class U, class = decltype(Implementation::OptionalConverter<T, U>::to(std::declval<Optional<T>&&>()))> explicit operator U() && {
-            return Implementation::OptionalConverter<T, U>::to(std::move(*this));
+            return Implementation::OptionalConverter<T, U>::to(Utility::move(*this));
         }
 
         Optional<T>& operator=(NullOptT) noexcept;
@@ -218,42 +278,38 @@ template<class T> class Optional {
         bool operator!=(const T& other) const { return !operator==(other); }
 
         T* operator->() {
-            CORRADE_ASSERT(_set, "Containers::Optional: the optional is empty", &_value);
+            CORRADE_DEBUG_ASSERT(_set, "Containers::Optional: the optional is empty", &_value);
             return &_value;
         }
 
         const T* operator->() const {
-            CORRADE_ASSERT(_set, "Containers::Optional: the optional is empty", &_value);
+            CORRADE_DEBUG_ASSERT(_set, "Containers::Optional: the optional is empty", &_value);
             return &_value;
         }
 
         T& operator*() & {
-            CORRADE_ASSERT(_set, "Containers::Optional: the optional is empty", _value);
+            CORRADE_DEBUG_ASSERT(_set, "Containers::Optional: the optional is empty", _value);
             return _value;
         }
 
-        T&& operator*() && {
-            CORRADE_ASSERT(_set, "Containers::Optional: the optional is empty", std::move(_value));
-            return std::move(_value);
+        T operator*() && {
+            CORRADE_DEBUG_ASSERT(_set, "Containers::Optional: the optional is empty", Utility::move(_value));
+            return Utility::move(_value);
         }
 
         const T& operator*() const & {
-            CORRADE_ASSERT(_set, "Containers::Optional: the optional is empty", _value);
+            CORRADE_DEBUG_ASSERT(_set, "Containers::Optional: the optional is empty", _value);
             return _value;
         }
-
-        #if !defined(__GNUC__) || defined(__clang__) || __GNUC__ > 4
-        const T&& operator*() const && {
-            CORRADE_ASSERT(_set, "Containers::Optional: the optional is empty", std::move(_value));
-            return std::move(_value);
-        }
-        #endif
 
         template<class ...Args> T& emplace(Args&&... args);
 
     private:
         union {
             T _value;
+            #if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG) && __GNUC__ >= 10 && __OPTIMIZE__
+            volatile char _gccStopSayingThisIsMaybeUninitialized[sizeof(T)];
+            #endif
         };
         bool _set;
 };
@@ -273,38 +329,58 @@ namespace Implementation {
 template<class T> inline
 Optional<typename Implementation::DeducedOptionalConverter<typename std::decay<T>::type>::Type>
 optional(T&& value) {
-    return Optional<typename std::decay<T>::type>{std::forward<T>(value)};
+    return Optional<typename std::decay<T>::type>{Utility::forward<T>(value)};
 }
 
 template<class T, class ...Args> inline Optional<T> optional(Args&&... args) {
-    return Optional<T>{InPlaceInit, std::forward<Args>(args)...};
+    return Optional<T>{Corrade::InPlaceInit, Utility::forward<Args>(args)...};
 }
 
-template<class T> inline auto optional(T&& other) -> decltype(Implementation::DeducedOptionalConverter<typename std::decay<T>::type>::from(std::forward<T>(other))) {
-    return Implementation::DeducedOptionalConverter<typename std::decay<T>::type>::from(std::forward<T>(other));
+template<class T> inline auto optional(T&& other) -> decltype(Implementation::DeducedOptionalConverter<typename std::decay<T>::type>::from(Utility::forward<T>(other))) {
+    return Implementation::DeducedOptionalConverter<typename std::decay<T>::type>::from(Utility::forward<T>(other));
 }
 
 template<class T> Optional<T>::Optional(const Optional<T>& other) noexcept(std::is_nothrow_copy_constructible<T>::value): _set(other._set) {
-    if(_set) new(&_value) T{other._value};
+    if(_set)
+        #if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG) && __GNUC__ < 5
+        Implementation::construct(_value, other._value);
+        #else
+        new(&_value) T{other._value};
+        #endif
 }
 
 template<class T> Optional<T>::Optional(Optional<T>&& other) noexcept(std::is_nothrow_move_constructible<T>::value): _set(other._set) {
-    if(_set) new(&_value) T{std::move(other._value)};
+    if(_set)
+        #if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG) && __GNUC__ < 5
+        Implementation::construct(_value, Utility::move(other._value));
+        #else
+        new(&_value) T{Utility::move(other._value)};
+        #endif
 }
 
 template<class T> Optional<T>& Optional<T>::operator=(const Optional<T>& other) noexcept(std::is_nothrow_copy_assignable<T>::value) {
     if(_set) _value.~T();
-    if((_set = other._set)) new(&_value) T{other._value};
+    if((_set = other._set))
+        #if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG) && __GNUC__ < 5
+        Implementation::construct(_value, other._value);
+        #else
+        new(&_value) T{other._value};
+        #endif
     return *this;
 }
 
 template<class T> Optional<T>& Optional<T>::operator=(Optional<T>&& other) noexcept(std::is_nothrow_move_assignable<T>::value) {
     if(_set && other._set) {
-        using std::swap;
+        using Utility::swap;
         swap(other._value, _value);
     } else {
         if(_set) _value.~T();
-        if((_set = other._set)) new(&_value) T{std::move(other._value)};
+        if((_set = other._set))
+            #if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG) && __GNUC__ < 5
+            Implementation::construct(_value, Utility::move(other._value));
+            #else
+            new(&_value) T{Utility::move(other._value)};
+            #endif
     }
     return *this;
 }
@@ -317,8 +393,8 @@ template<class T> Optional<T>& Optional<T>::operator=(NullOptT) noexcept {
 
 template<class T> template<class ...Args> T& Optional<T>::emplace(Args&&... args) {
     if(_set) _value.~T();
+    Implementation::construct<T>(_value, Utility::forward<Args>(args)...);
     _set = true;
-    Implementation::construct<T>(_value, std::forward<Args>(args)...);
     return _value;
 }
 
@@ -338,7 +414,7 @@ template<class T> struct OptionalConverter<T, std::optional<T>> {
     }
 
     static Optional<T> from(std::optional<T>&& other) {
-        return other ? Optional<T>{*std::move(other)} : Containers::NullOpt;
+        return other ? Optional<T>{*Utility::move(other)} : Containers::NullOpt;
     }
 
     static std::optional<T> to(const Optional<T>& other) {
@@ -346,7 +422,7 @@ template<class T> struct OptionalConverter<T, std::optional<T>> {
     }
 
     static std::optional<T> to(Optional<T>&& other) {
-        return other ? std::optional<T>{*std::move(other)} : std::nullopt;
+        return other ? std::optional<T>{*Utility::move(other)} : std::nullopt;
     }
 };
 

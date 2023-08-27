@@ -15,6 +15,24 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    v2020.06-1454-gfc3b7 (2023-08-27)
+    -   New exceptPrefix() API, the except() API is renamed to exceptSuffix().
+        The suffix() API, which took an offset, is removed and will be
+        eventually reintroduced again but taking suffix size, consistently with
+        prefix() that takes prefix size.
+    -   New sliceSize() API, taking a begin + size instead of begin + end
+    -   Element access with operator[](), front() and back() is now
+        bounds-checked with assertions
+    -   The front() and back() APIs are now constexpr
+    -   Convenience ArrayView2, ArrayView3, ArrayView4 aliases for
+        StaticArrayView
+    -   Renamed empty() to isEmpty() for consistency with other bool-returning
+        APIs
+    -   MSVC 2022 compatibility
+    -   Compatibility of the std::span conversion code with C++20 which removes
+        the <ciso646> header
+    -   Removed dependency on <utility>, resulting in about ~600 preprocessed
+        lines less
     v2020.06-0-g61d1b58c (2020-06-27)
     -   Conversion of const types to mutable arrays is now disabled with SFINAE
         to prevent ambiguous constructor overloads
@@ -36,14 +54,15 @@
     v2019.01-41-g39c08d7c (2019-02-18)
     -   Initial release
 
-    Generated from Corrade v2020.06-0-g61d1b58c (2020-06-27), 705 / 2648 LoC
+    Generated from Corrade v2020.06-1454-gfc3b7 (2023-08-27), 828 / 2023 LoC
 */
 
 /*
     This file is part of Corrade.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
-                2017, 2018, 2019, 2020 Vladimír Vondruš <mosra@centrum.cz>
+                2017, 2018, 2019, 2020, 2021, 2022, 2023
+              Vladimír Vondruš <mosra@centrum.cz>
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the "Software"),
@@ -67,29 +86,63 @@
 #include <cstddef>
 #include <initializer_list>
 #include <type_traits>
-#include <utility>
 #if (!defined(CORRADE_ASSERT) || !defined(CORRADE_CONSTEXPR_ASSERT)) && !defined(NDEBUG)
 #include <cassert>
 #endif
 
-#if defined(_MSC_VER) && _MSC_VER <= 1930
-#define CORRADE_MSVC2019_COMPATIBILITY
+#ifdef _MSC_VER
+#define CORRADE_MSVC_COMPATIBILITY
+#endif
+#if defined(_MSC_VER) && _MSC_VER < 1910
+#define CORRADE_MSVC2015_COMPATIBILITY
 #endif
 
 #ifndef CorradeArrayView_h
 #define CorradeArrayView_h
-
 namespace Corrade { namespace Containers {
 
-template<class> class ArrayView;
 template<std::size_t, class> class StaticArrayView;
+template<class T> using ArrayView2 = StaticArrayView<2, T>;
+template<class T> using ArrayView3 = StaticArrayView<3, T>;
+template<class T> using ArrayView4 = StaticArrayView<4, T>;
+
+}}
+#endif
+#ifndef Corrade_Utility_Move_h
+#define Corrade_Utility_Move_h
+
+namespace Corrade { namespace Utility {
+
+template<class T> constexpr T&& forward(typename std::remove_reference<T>::type& t) noexcept {
+    return static_cast<T&&>(t);
+}
+
+template<class T> constexpr T&& forward(typename std::remove_reference<T>::type&& t) noexcept {
+    static_assert(!std::is_lvalue_reference<T>::value, "T can't be a lvalue reference");
+    return static_cast<T&&>(t);
+}
+
+template<class T> constexpr typename std::remove_reference<T>::type&& move(T&& t) noexcept {
+    return static_cast<typename std::remove_reference<T>::type&&>(t);
+}
+
+template<class T> void swap(T& a, T& b) noexcept(std::is_nothrow_move_constructible<T>::value && std::is_nothrow_move_assignable<T>::value) {
+    T tmp = static_cast<T&&>(a);
+    a = static_cast<T&&>(b);
+    b = static_cast<T&&>(tmp);
+}
+template<class T> void swap(T*& a, T*& b) noexcept {
+    T* tmp = a;
+    a = b;
+    b = tmp;
+}
 
 }}
 
 #endif
 #ifndef CORRADE_ASSERT
 #ifdef NDEBUG
-#define CORRADE_ASSERT(condition, message, returnValue) do {} while(0)
+#define CORRADE_ASSERT(condition, message, returnValue) do {} while(false)
 #else
 #define CORRADE_ASSERT(condition, message, returnValue) assert(condition)
 #endif
@@ -105,6 +158,10 @@ template<std::size_t, class> class StaticArrayView;
     }(), 0))
 #endif
 #endif
+#ifndef CORRADE_CONSTEXPR_DEBUG_ASSERT
+#define CORRADE_CONSTEXPR_DEBUG_ASSERT(condition, message)                  \
+    CORRADE_CONSTEXPR_ASSERT(condition, message)
+#endif
 #ifndef Corrade_Containers_ArrayView_h
 #define Corrade_Containers_ArrayView_h
 
@@ -119,9 +176,9 @@ template<class T> class ArrayView {
     public:
         typedef T Type;
 
-        constexpr /*implicit*/ ArrayView(std::nullptr_t) noexcept: _data(nullptr), _size(0) {}
+        template<class U, class = typename std::enable_if<std::is_same<std::nullptr_t, U>::value>::type> constexpr /*implicit*/ ArrayView(U) noexcept: _data{}, _size{} {}
 
-        constexpr /*implicit*/ ArrayView() noexcept: _data(nullptr), _size(0) {}
+        constexpr /*implicit*/ ArrayView() noexcept: _data{}, _size{} {}
 
         constexpr /*implicit*/ ArrayView(T* data, std::size_t size) noexcept: _data(data), _size(size) {}
 
@@ -140,13 +197,13 @@ template<class T> class ArrayView {
             static_assert(sizeof(U) == sizeof(T), "type sizes are not compatible");
         }
 
-        template<class U, class = decltype(Implementation::ArrayViewConverter<T, typename std::decay<U&&>::type>::from(std::declval<U&&>()))> constexpr /*implicit*/ ArrayView(U&& other) noexcept: ArrayView{Implementation::ArrayViewConverter<T, typename std::decay<U&&>::type>::from(std::forward<U>(other))} {}
+        template<class U, class = decltype(Implementation::ArrayViewConverter<T, typename std::decay<U&&>::type>::from(std::declval<U&&>()))> constexpr /*implicit*/ ArrayView(U&& other) noexcept: ArrayView{Implementation::ArrayViewConverter<T, typename std::decay<U&&>::type>::from(Utility::forward<U>(other))} {}
 
         template<class U, class = decltype(Implementation::ArrayViewConverter<T, U>::to(std::declval<ArrayView<T>>()))> constexpr /*implicit*/ operator U() const {
             return Implementation::ArrayViewConverter<T, U>::to(*this);
         }
 
-        #ifndef CORRADE_MSVC2019_COMPATIBILITY
+        #ifndef CORRADE_MSVC_COMPATIBILITY
         constexpr explicit operator bool() const { return _data; }
         #endif
 
@@ -156,7 +213,7 @@ template<class T> class ArrayView {
 
         constexpr std::size_t size() const { return _size; }
 
-        constexpr bool empty() const { return !_size; }
+        constexpr bool isEmpty() const { return !_size; }
 
         constexpr T* begin() const { return _data; }
         constexpr T* cbegin() const { return _data; }
@@ -164,42 +221,60 @@ template<class T> class ArrayView {
         constexpr T* end() const { return _data+_size; }
         constexpr T* cend() const { return _data+_size; }
 
-        T& front() const;
+        constexpr T& front() const;
 
-        T& back() const;
+        constexpr T& back() const;
+
+        template<class U, class = typename std::enable_if<std::is_convertible<U, std::size_t>::value>::type> constexpr T& operator[](U i) const;
 
         constexpr ArrayView<T> slice(T* begin, T* end) const;
 
         constexpr ArrayView<T> slice(std::size_t begin, std::size_t end) const;
 
-        template<std::size_t viewSize> constexpr StaticArrayView<viewSize, T> slice(T* begin) const;
+        template<class U, class = typename std::enable_if<std::is_convertible<U, T*>::value && !std::is_convertible<U, std::size_t>::value>::type> constexpr ArrayView<T> sliceSize(U begin, std::size_t size) const {
+            return slice(begin, begin + size);
+        }
 
-        template<std::size_t viewSize> constexpr StaticArrayView<viewSize, T> slice(std::size_t begin) const;
+        constexpr ArrayView<T> sliceSize(std::size_t begin, std::size_t size) const {
+            return slice(begin, begin + size);
+        }
+
+        template<std::size_t size_, class U, class = typename std::enable_if<std::is_convertible<U, T*>::value && !std::is_convertible<U, std::size_t>::value>::type> constexpr StaticArrayView<size_, T> slice(U begin) const;
+
+        template<std::size_t size_> constexpr StaticArrayView<size_, T> slice(std::size_t begin) const;
 
         template<std::size_t begin_, std::size_t end_> constexpr StaticArrayView<end_ - begin_, T> slice() const;
 
-        constexpr ArrayView<T> prefix(T* end) const {
-            return end ? slice(_data, end) : nullptr;
+        template<std::size_t begin_, std::size_t size_> constexpr StaticArrayView<size_, T> sliceSize() const {
+            return slice<begin_, begin_ + size_>();
         }
 
-        constexpr ArrayView<T> prefix(std::size_t end) const {
-            return slice(0, end);
-        }
-
-        template<std::size_t end_> constexpr StaticArrayView<end_, T> prefix() const {
-            return slice<0, end_>();
+        template<class U, class = typename std::enable_if<std::is_convertible<U, T*>::value && !std::is_convertible<U, std::size_t>::value>::type> constexpr ArrayView<T> prefix(U end) const {
+            return static_cast<T*>(end) ? slice(_data, end) : nullptr;
         }
 
         constexpr ArrayView<T> suffix(T* begin) const {
             return _data && !begin ? nullptr : slice(begin, _data + _size);
         }
 
-        constexpr ArrayView<T> suffix(std::size_t begin) const {
-            return slice(begin, _size);
+        constexpr ArrayView<T> prefix(std::size_t size) const {
+            return slice(0, size);
         }
 
-        constexpr ArrayView<T> except(std::size_t count) const {
-            return slice(0, _size - count);
+        template<std::size_t size_> constexpr StaticArrayView<size_, T> prefix() const {
+            return slice<0, size_>();
+        }
+
+        template<std::size_t size_> constexpr StaticArrayView<size_, T> suffix() const {
+            return slice<size_>(_size - size_);
+        }
+
+        constexpr ArrayView<T> exceptPrefix(std::size_t size) const {
+            return slice(size, _size);
+        }
+
+        constexpr ArrayView<T> exceptSuffix(std::size_t size) const {
+            return slice(0, _size - size);
         }
 
     private:
@@ -211,9 +286,9 @@ template<> class ArrayView<void> {
     public:
         typedef void Type;
 
-        constexpr /*implicit*/ ArrayView(std::nullptr_t) noexcept: _data(nullptr), _size(0) {}
+        template<class U, class = typename std::enable_if<std::is_same<std::nullptr_t, U>::value>::type> constexpr /*implicit*/ ArrayView(U) noexcept: _data{}, _size{} {}
 
-        constexpr /*implicit*/ ArrayView() noexcept: _data(nullptr), _size(0) {}
+        constexpr /*implicit*/ ArrayView() noexcept: _data{}, _size{} {}
 
         constexpr /*implicit*/ ArrayView(void* data, std::size_t size) noexcept: _data(data), _size(size) {}
 
@@ -233,7 +308,7 @@ template<> class ArrayView<void> {
 
         template<class T, class = decltype(Implementation::ErasedArrayViewConverter<typename std::decay<T&&>::type>::from(std::declval<T&&>()))> constexpr /*implicit*/ ArrayView(T&& other) noexcept: ArrayView{Implementation::ErasedArrayViewConverter<typename std::decay<T&&>::type>::from(other)} {}
 
-        #ifndef CORRADE_MSVC2019_COMPATIBILITY
+        #ifndef CORRADE_MSVC_COMPATIBILITY
         constexpr explicit operator bool() const { return _data; }
         #endif
 
@@ -243,7 +318,7 @@ template<> class ArrayView<void> {
 
         constexpr std::size_t size() const { return _size; }
 
-        constexpr bool empty() const { return !_size; }
+        constexpr bool isEmpty() const { return !_size; }
 
     private:
         void* _data;
@@ -254,9 +329,9 @@ template<> class ArrayView<const void> {
     public:
         typedef const void Type;
 
-        constexpr /*implicit*/ ArrayView(std::nullptr_t) noexcept: _data(nullptr), _size(0) {}
+        template<class U, class = typename std::enable_if<std::is_same<std::nullptr_t, U>::value>::type> constexpr /*implicit*/ ArrayView(U) noexcept: _data{}, _size{} {}
 
-        constexpr /*implicit*/ ArrayView() noexcept: _data(nullptr), _size(0) {}
+        constexpr /*implicit*/ ArrayView() noexcept: _data{}, _size{} {}
 
         constexpr /*implicit*/ ArrayView(const void* data, std::size_t size) noexcept: _data(data), _size(size) {}
 
@@ -272,7 +347,7 @@ template<> class ArrayView<const void> {
 
         template<class T, class = decltype(Implementation::ErasedArrayViewConverter<const T>::from(std::declval<const T&>()))> constexpr /*implicit*/ ArrayView(const T& other) noexcept: ArrayView{Implementation::ErasedArrayViewConverter<const T>::from(other)} {}
 
-        #ifndef CORRADE_MSVC2019_COMPATIBILITY
+        #ifndef CORRADE_MSVC_COMPATIBILITY
         constexpr explicit operator bool() const { return _data; }
         #endif
 
@@ -282,7 +357,7 @@ template<> class ArrayView<const void> {
 
         constexpr std::size_t size() const { return _size; }
 
-        constexpr bool empty() const { return !_size; }
+        constexpr bool isEmpty() const { return !_size; }
 
     private:
         const void* _data;
@@ -310,7 +385,7 @@ template<class T> constexpr ArrayView<T> arrayView(ArrayView<T> view) {
 }
 
 template<class T, class U = decltype(Implementation::ErasedArrayViewConverter<typename std::remove_reference<T&&>::type>::from(std::declval<T&&>()))> constexpr U arrayView(T&& other) {
-    return Implementation::ErasedArrayViewConverter<typename std::remove_reference<T&&>::type>::from(std::forward<T>(other));
+    return Implementation::ErasedArrayViewConverter<typename std::remove_reference<T&&>::type>::from(Utility::forward<T>(other));
 }
 
 template<class U, class T> ArrayView<U> arrayCast(ArrayView<T> view) {
@@ -360,28 +435,30 @@ template<std::size_t size_, class T> class StaticArrayView {
             Size = size_
         };
 
-        constexpr /*implicit*/ StaticArrayView(std::nullptr_t) noexcept: _data(nullptr) {}
+        template<class U, class = U, class = typename std::enable_if<std::is_same<std::nullptr_t, U>::value>::type> constexpr /*implicit*/ StaticArrayView(U) noexcept: _data{} {}
 
-        constexpr /*implicit*/ StaticArrayView() noexcept: _data(nullptr) {}
+        constexpr /*implicit*/ StaticArrayView() noexcept: _data{} {}
 
         template<class U, class = typename std::enable_if<std::is_pointer<U>::value && !std::is_same<U, T(&)[size_]>::value>::type> constexpr explicit StaticArrayView(U data)
         noexcept: _data(data) {}
 
         template<class U, class = typename std::enable_if<std::is_convertible<U*, T*>::value>::type>
-        constexpr /*implicit*/ StaticArrayView(U(&data)[size_]) noexcept: _data{data} {}
+        constexpr /*implicit*/ StaticArrayView(U(&data)[size_]) noexcept: _data{data} {
+            static_assert(sizeof(T) == sizeof(U), "type sizes are not compatible");
+        }
 
         template<class U, class = typename std::enable_if<std::is_convertible<U*, T*>::value>::type>
         constexpr /*implicit*/ StaticArrayView(StaticArrayView<size_, U> view) noexcept: _data{view} {
             static_assert(sizeof(T) == sizeof(U), "type sizes are not compatible");
         }
 
-        template<class U, class = decltype(Implementation::StaticArrayViewConverter<size_, T, typename std::decay<U&&>::type>::from(std::declval<U&&>()))> constexpr /*implicit*/ StaticArrayView(U&& other) noexcept: StaticArrayView{Implementation::StaticArrayViewConverter<size_, T, typename std::decay<U&&>::type>::from(std::forward<U>(other))} {}
+        template<class U, class = decltype(Implementation::StaticArrayViewConverter<size_, T, typename std::decay<U&&>::type>::from(std::declval<U&&>()))> constexpr /*implicit*/ StaticArrayView(U&& other) noexcept: StaticArrayView{Implementation::StaticArrayViewConverter<size_, T, typename std::decay<U&&>::type>::from(Utility::forward<U>(other))} {}
 
         template<class U, class = decltype(Implementation::StaticArrayViewConverter<size_, T, U>::to(std::declval<StaticArrayView<size_, T>>()))> constexpr /*implicit*/ operator U() const {
             return Implementation::StaticArrayViewConverter<size_, T, U>::to(*this);
         }
 
-        #ifndef CORRADE_MSVC2019_COMPATIBILITY
+        #ifndef CORRADE_MSVC_COMPATIBILITY
         constexpr explicit operator bool() const { return _data; }
         #endif
 
@@ -391,7 +468,7 @@ template<std::size_t size_, class T> class StaticArrayView {
 
         constexpr std::size_t size() const { return size_; }
 
-        constexpr bool empty() const { return !size_; }
+        constexpr bool isEmpty() const { return !size_; }
 
         constexpr T* begin() const { return _data; }
         constexpr T* cbegin() const { return _data; }
@@ -399,9 +476,11 @@ template<std::size_t size_, class T> class StaticArrayView {
         constexpr T* end() const { return _data + size_; }
         constexpr T* cend() const { return _data + size_; }
 
-        T& front() const;
+        constexpr T& front() const;
 
-        T& back() const;
+        constexpr T& back() const;
+
+        template<class U, class = typename std::enable_if<std::is_convertible<U, std::size_t>::value>::type> constexpr T& operator[](U i) const;
 
         constexpr ArrayView<T> slice(T* begin, T* end) const {
             return ArrayView<T>(*this).slice(begin, end);
@@ -410,48 +489,71 @@ template<std::size_t size_, class T> class StaticArrayView {
             return ArrayView<T>(*this).slice(begin, end);
         }
 
-        template<std::size_t viewSize> constexpr StaticArrayView<viewSize, T> slice(T* begin) const {
-            return ArrayView<T>(*this).template slice<viewSize>(begin);
+        template<class U, class = typename std::enable_if<std::is_convertible<U, T*>::value && !std::is_convertible<U, std::size_t>::value>::type> constexpr ArrayView<T> sliceSize(U begin, std::size_t size) const {
+            return ArrayView<T>(*this).sliceSize(begin, size);
         }
-        template<std::size_t viewSize> constexpr StaticArrayView<viewSize, T> slice(std::size_t begin) const {
-            return ArrayView<T>(*this).template slice<viewSize>(begin);
+
+        constexpr ArrayView<T> sliceSize(std::size_t begin, std::size_t size) const {
+            return ArrayView<T>(*this).sliceSize(begin, size);
+        }
+
+        template<std::size_t size__, class U, class = typename std::enable_if<std::is_convertible<U, T*>::value && !std::is_convertible<U, std::size_t>::value>::type> constexpr StaticArrayView<size__, T> slice(U begin) const {
+            return ArrayView<T>(*this).template slice<size__>(begin);
+        }
+
+        template<std::size_t size__> constexpr StaticArrayView<size__, T> slice(std::size_t begin) const {
+            return ArrayView<T>(*this).template slice<size__>(begin);
         }
 
         template<std::size_t begin_, std::size_t end_> constexpr StaticArrayView<end_ - begin_, T> slice() const;
 
-        constexpr ArrayView<T> prefix(T* end) const {
-            return ArrayView<T>(*this).prefix(end);
-        }
-        constexpr ArrayView<T> prefix(std::size_t end) const {
-            return ArrayView<T>(*this).prefix(end);
+        template<std::size_t begin_, std::size_t size__> constexpr StaticArrayView<size__, T> sliceSize() const {
+            return slice<begin_, begin_ + size__>();
         }
 
-        template<std::size_t end_> constexpr StaticArrayView<end_, T> prefix() const {
-            return slice<0, end_>();
+        template<class U, class = typename std::enable_if<std::is_convertible<U, T*>::value && !std::is_convertible<U, std::size_t>::value>::type> constexpr ArrayView<T> prefix(U end) const {
+            return ArrayView<T>(*this).prefix(end);
         }
 
         constexpr ArrayView<T> suffix(T* begin) const {
             return ArrayView<T>(*this).suffix(begin);
         }
-        constexpr ArrayView<T> suffix(std::size_t begin) const {
-            return ArrayView<T>(*this).suffix(begin);
+
+        constexpr ArrayView<T> prefix(std::size_t size) const {
+            return ArrayView<T>(*this).prefix(size);
         }
 
-        template<std::size_t begin_> constexpr StaticArrayView<size_ - begin_, T> suffix() const {
-            return slice<begin_, size_>();
+        template<std::size_t size__> constexpr StaticArrayView<size__, T> prefix() const {
+            return slice<0, size__>();
         }
 
-        constexpr ArrayView<T> except(std::size_t count) const {
-            return ArrayView<T>(*this).except(count);
+        constexpr ArrayView<T> exceptPrefix(std::size_t size__) const {
+            return ArrayView<T>(*this).exceptPrefix(size__);
         }
 
-        template<std::size_t count> constexpr StaticArrayView<size_ - count, T> except() const {
-            return slice<0, size_ - count>();
+        template<std::size_t size__> constexpr StaticArrayView<size_ - size__, T> exceptPrefix() const {
+            return slice<size__, size_>();
+        }
+
+        constexpr ArrayView<T> exceptSuffix(std::size_t size) const {
+            return ArrayView<T>(*this).exceptSuffix(size);
+        }
+
+        template<std::size_t size__> constexpr StaticArrayView<size_ - size__, T> exceptSuffix() const {
+            return slice<0, size_ - size__>();
         }
 
     private:
         T* _data;
 };
+
+#ifndef CORRADE_MSVC2015_COMPATIBILITY /* Multiple definitions still broken */
+template<class T> using ArrayView2 = StaticArrayView<2, T>;
+
+template<class T> using ArrayView3 = StaticArrayView<3, T>;
+
+template<class T> using ArrayView4 = StaticArrayView<4, T>;
+#endif
 
 template<std::size_t size, class T> constexpr StaticArrayView<size, T> staticArrayView(T* data) {
     return StaticArrayView<size, T>{data};
@@ -466,7 +568,7 @@ template<std::size_t size, class T> constexpr StaticArrayView<size, T> staticArr
 }
 
 template<class T, class U = decltype(Implementation::ErasedStaticArrayViewConverter<typename std::remove_reference<T&&>::type>::from(std::declval<T&&>()))> constexpr U staticArrayView(T&& other) {
-    return Implementation::ErasedStaticArrayViewConverter<typename std::remove_reference<T&&>::type>::from(std::forward<T>(other));
+    return Implementation::ErasedStaticArrayViewConverter<typename std::remove_reference<T&&>::type>::from(Utility::forward<T>(other));
 }
 
 template<class U, std::size_t size, class T> StaticArrayView<size*sizeof(T)/sizeof(U), U> arrayCast(StaticArrayView<size, T> view) {
@@ -482,18 +584,21 @@ template<class U, std::size_t size, class T> StaticArrayView<size*sizeof(T)/size
     return arrayCast<U>(StaticArrayView<size, T>{data});
 }
 
-template<class T> T& ArrayView<T>::front() const {
-    CORRADE_ASSERT(_size, "Containers::ArrayView::front(): view is empty", _data[0]);
-    return _data[0];
+template<class T> constexpr T& ArrayView<T>::front() const {
+    return CORRADE_CONSTEXPR_DEBUG_ASSERT(_size, "Containers::ArrayView::front(): view is empty"), _data[0];
 }
 
-template<class T> T& ArrayView<T>::back() const {
-    CORRADE_ASSERT(_size, "Containers::ArrayView::back(): view is empty", _data[_size - 1]);
-    return _data[_size - 1];
+template<class T> constexpr T& ArrayView<T>::back() const {
+    return CORRADE_CONSTEXPR_DEBUG_ASSERT(_size, "Containers::ArrayView::back(): view is empty"), _data[_size - 1];
+}
+
+template<class T> template<class U, class> constexpr T& ArrayView<T>::operator[](const U i) const {
+    return CORRADE_CONSTEXPR_DEBUG_ASSERT(std::size_t(i) < _size,
+        "Containers::ArrayView::operator[](): index" << i << "out of range for" << _size << "elements"), _data[i];
 }
 
 template<class T> constexpr ArrayView<T> ArrayView<T>::slice(T* begin, T* end) const {
-    return CORRADE_CONSTEXPR_ASSERT(_data <= begin && begin <= end && end <= _data + _size,
+    return CORRADE_CONSTEXPR_DEBUG_ASSERT(_data <= begin && begin <= end && end <= _data + _size,
             "Containers::ArrayView::slice(): slice ["
             << Utility::Debug::nospace << begin - _data
             << Utility::Debug::nospace << ":"
@@ -504,7 +609,7 @@ template<class T> constexpr ArrayView<T> ArrayView<T>::slice(T* begin, T* end) c
 }
 
 template<class T> constexpr ArrayView<T> ArrayView<T>::slice(std::size_t begin, std::size_t end) const {
-    return CORRADE_CONSTEXPR_ASSERT(begin <= end && end <= _size,
+    return CORRADE_CONSTEXPR_DEBUG_ASSERT(begin <= end && end <= _size,
             "Containers::ArrayView::slice(): slice ["
             << Utility::Debug::nospace << begin
             << Utility::Debug::nospace << ":"
@@ -514,41 +619,46 @@ template<class T> constexpr ArrayView<T> ArrayView<T>::slice(std::size_t begin, 
         ArrayView<T>{_data + begin, end - begin};
 }
 
-template<std::size_t size_, class T> T& StaticArrayView<size_, T>::front() const {
+template<std::size_t size_, class T> constexpr T& StaticArrayView<size_, T>::front() const {
     static_assert(size_, "view is empty");
     return _data[0];
 }
 
-template<std::size_t size_, class T> T& StaticArrayView<size_, T>::back() const {
+template<std::size_t size_, class T> constexpr T& StaticArrayView<size_, T>::back() const {
     static_assert(size_, "view is empty");
     return _data[size_ - 1];
 }
 
-template<class T> template<std::size_t viewSize> constexpr StaticArrayView<viewSize, T> ArrayView<T>::slice(T* begin) const {
-    return CORRADE_CONSTEXPR_ASSERT(_data <= begin && begin + viewSize <= _data + _size,
+template<std::size_t size_, class T> template<class U, class> constexpr T& StaticArrayView<size_, T>::operator[](const U i) const {
+    return CORRADE_CONSTEXPR_DEBUG_ASSERT(std::size_t(i) < size_,
+        "Containers::StaticArrayView::operator[](): index" << i << "out of range for" << size_ << "elements"), _data[i];
+}
+
+template<class T> template<std::size_t size_, class U, class> constexpr StaticArrayView<size_, T> ArrayView<T>::slice(const U begin) const {
+    return CORRADE_CONSTEXPR_DEBUG_ASSERT(_data <= begin && begin + size_ <= _data + _size,
             "Containers::ArrayView::slice(): slice ["
             << Utility::Debug::nospace << begin - _data
             << Utility::Debug::nospace << ":"
-            << Utility::Debug::nospace << begin + viewSize - _data
+            << Utility::Debug::nospace << begin + size_ - _data
             << Utility::Debug::nospace << "] out of range for" << _size
             << "elements"),
-        StaticArrayView<viewSize, T>{begin};
+        StaticArrayView<size_, T>{begin};
 }
 
-template<class T> template<std::size_t viewSize> constexpr StaticArrayView<viewSize, T> ArrayView<T>::slice(std::size_t begin) const {
-    return CORRADE_CONSTEXPR_ASSERT(begin + viewSize <= _size,
+template<class T> template<std::size_t size_> constexpr StaticArrayView<size_, T> ArrayView<T>::slice(std::size_t begin) const {
+    return CORRADE_CONSTEXPR_DEBUG_ASSERT(begin + size_ <= _size,
             "Containers::ArrayView::slice(): slice ["
             << Utility::Debug::nospace << begin
             << Utility::Debug::nospace << ":"
-            << Utility::Debug::nospace << begin + viewSize
+            << Utility::Debug::nospace << begin + size_
             << Utility::Debug::nospace << "] out of range for" << _size
             << "elements"),
-        StaticArrayView<viewSize, T>{_data + begin};
+        StaticArrayView<size_, T>{_data + begin};
 }
 
 template<class T> template<std::size_t begin_, std::size_t end_> constexpr StaticArrayView<end_ - begin_, T> ArrayView<T>::slice() const {
     static_assert(begin_ < end_, "fixed-size slice needs to have a positive size");
-    return CORRADE_CONSTEXPR_ASSERT(end_ <= _size,
+    return CORRADE_CONSTEXPR_DEBUG_ASSERT(end_ <= _size,
             "Containers::ArrayView::slice(): slice ["
             << Utility::Debug::nospace << begin_
             << Utility::Debug::nospace << ":"
@@ -626,7 +736,20 @@ template<std::size_t size, class T> struct ErasedStaticArrayViewConverter<const 
 #endif
 #ifdef CORRADE_ARRAYVIEW_STL_SPAN_COMPATIBILITY
 #include <span>
+#ifdef _MSC_VER
+#ifdef _MSVC_LANG
+#define CORRADE_CXX_STANDARD _MSVC_LANG
+#else
+#define CORRADE_CXX_STANDARD 201103L
+#endif
+#else
+#define CORRADE_CXX_STANDARD __cplusplus
+#endif
+#if CORRADE_CXX_STANDARD > 201703
+#include <version>
+#else
 #include <ciso646>
+#endif
 #ifdef _LIBCPP_VERSION
 #define CORRADE_TARGET_LIBCXX
 #endif

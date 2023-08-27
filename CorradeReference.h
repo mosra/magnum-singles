@@ -13,20 +13,24 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    v2020.06-1454-gfc3b7 (2023-08-27)
+    -   The underlying type is exposed in a new Reference::Type typedef
+    -   Removed unnecessary function calls for improved debug performace
     v2018.10-232-ge927d7f3 (2019-01-28)
     -   Stricter matching for external representation conversion
     -   Fixed STL compatibility to not recurse infinitely
     v2018.10-183-g4eb1adc0 (2019-01-23)
     -   Initial release
 
-    Generated from Corrade v2020.06-0-g61d1b58c (2020-06-27), 115 / 1764 LoC
+    Generated from Corrade v2020.06-1454-gfc3b7 (2023-08-27), 119 / 1627 LoC
 */
 
 /*
     This file is part of Corrade.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
-                2017, 2018, 2019, 2020 Vladimír Vondruš <mosra@centrum.cz>
+                2017, 2018, 2019, 2020, 2021, 2022, 2023
+              Vladimír Vondruš <mosra@centrum.cz>
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the "Software"),
@@ -60,13 +64,15 @@ namespace Implementation {
 
 template<class T> class Reference {
     public:
+        typedef T Type;
+
         constexpr /*implicit*/ Reference(T& reference) noexcept: _reference{&reference} {}
 
         template<class U, class = decltype(Implementation::ReferenceConverter<T, U>::from(std::declval<U>()))> constexpr /*implicit*/ Reference(U other) noexcept: Reference{Implementation::ReferenceConverter<T, U>::from(other)} {}
 
         Reference(T&&) = delete;
 
-        template<class U, class = typename std::enable_if<std::is_base_of<T, U>::value>::type> constexpr /*implicit*/ Reference(Reference<U> other) noexcept: _reference{&*other} {}
+        template<class U, class = typename std::enable_if<std::is_base_of<T, U>::value>::type> constexpr /*implicit*/ Reference(Reference<U> other) noexcept: _reference{other._reference} {}
 
         template<class U, class = decltype(Implementation::ReferenceConverter<T, U>::to(std::declval<Reference<T>>()))> constexpr /*implicit*/ operator U() const {
             return Implementation::ReferenceConverter<T, U>::to(*this);
@@ -77,15 +83,13 @@ template<class T> class Reference {
 
         constexpr T& get() const { return *_reference; }
 
-        constexpr T* operator->() const {
-            return _reference;
-        }
+        constexpr T* operator->() const { return _reference; }
 
-        constexpr T& operator*() const {
-            return *_reference;
-        }
+        constexpr T& operator*() const { return *_reference; }
 
     private:
+        template<class U> friend class Reference;
+
         T* _reference;
 };
 

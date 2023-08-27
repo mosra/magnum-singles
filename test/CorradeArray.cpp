@@ -39,7 +39,7 @@ using namespace Corrade;
 */
 
 int main() {
-    Containers::Array<int> a{Containers::InPlaceInit, {1, 3, 42, 1337}};
+    Containers::Array<int> a{InPlaceInit, {1, 3, 42, 1337}};
     Containers::StaticArray<1, int> b{42};
     return a.slice<1>(2)[0] - *b;
 }

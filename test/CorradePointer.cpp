@@ -36,6 +36,6 @@ using namespace Corrade;
 */
 
 int main() {
-    Containers::Pointer<int> a{Containers::InPlaceInit, 42};
+    Containers::Pointer<int> a{InPlaceInit, 42};
     return *a - 42;
 }

@@ -13,19 +13,23 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    v2020.06-1454-gfc3b7 (2023-08-27)
+    -   Ability to construct a NoCreate'd ScopeGuard and then move a complete
+        instance over it
     v2019.01-41-g39c08d7c (2019-02-18)
     -   Ability to create a handle-less ScopeGuard
     v2018.10-232-ge927d7f3 (2019-01-28)
     -   Initial release
 
-    Generated from Corrade v2020.06-0-g61d1b58c (2020-06-27), 131 / 34 LoC
+    Generated from Corrade v2020.06-1454-gfc3b7 (2023-08-27), 233 / 1702 LoC
 */
 
 /*
     This file is part of Corrade.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
-                2017, 2018, 2019, 2020 Vladimír Vondruš <mosra@centrum.cz>
+                2017, 2018, 2019, 2020, 2021, 2022, 2023
+              Vladimír Vondruš <mosra@centrum.cz>
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the "Software"),
@@ -46,10 +50,94 @@
     DEALINGS IN THE SOFTWARE.
 */
 
-#if defined(_MSC_VER) && _MSC_VER <= 1900
+#include <type_traits>
+
+#if defined(_MSC_VER) && _MSC_VER < 1910
 #define CORRADE_MSVC2015_COMPATIBILITY
 #endif
 
+#ifndef Corrade_Tags_h
+#define Corrade_Tags_h
+
+namespace Corrade {
+
+struct DefaultInitT {
+    struct Init {};
+    constexpr explicit DefaultInitT(Init) {}
+};
+
+struct ValueInitT {
+    struct Init {};
+    constexpr explicit ValueInitT(Init) {}
+};
+
+struct NoInitT {
+    struct Init {};
+    constexpr explicit NoInitT(Init) {}
+};
+
+struct NoCreateT {
+    struct Init {};
+    constexpr explicit NoCreateT(Init) {}
+};
+
+struct DirectInitT {
+    struct Init {};
+    constexpr explicit DirectInitT(Init) {}
+};
+
+struct InPlaceInitT {
+    struct Init {};
+    constexpr explicit InPlaceInitT(Init) {}
+};
+
+constexpr DefaultInitT DefaultInit{DefaultInitT::Init{}};
+
+constexpr ValueInitT ValueInit{ValueInitT::Init{}};
+
+constexpr NoInitT NoInit{NoInitT::Init{}};
+
+constexpr NoCreateT NoCreate{NoCreateT::Init{}};
+
+constexpr DirectInitT DirectInit{DirectInitT::Init{}};
+
+constexpr InPlaceInitT InPlaceInit{InPlaceInitT::Init{}};
+
+}
+
+#endif
+#ifndef Corrade_Utility_Move_h
+#define Corrade_Utility_Move_h
+
+namespace Corrade { namespace Utility {
+
+template<class T> constexpr T&& forward(typename std::remove_reference<T>::type& t) noexcept {
+    return static_cast<T&&>(t);
+}
+
+template<class T> constexpr T&& forward(typename std::remove_reference<T>::type&& t) noexcept {
+    static_assert(!std::is_lvalue_reference<T>::value, "T can't be a lvalue reference");
+    return static_cast<T&&>(t);
+}
+
+template<class T> constexpr typename std::remove_reference<T>::type&& move(T&& t) noexcept {
+    return static_cast<typename std::remove_reference<T>::type&&>(t);
+}
+
+template<class T> void swap(T& a, T& b) noexcept(std::is_nothrow_move_constructible<T>::value && std::is_nothrow_move_assignable<T>::value) {
+    T tmp = static_cast<T&&>(a);
+    a = static_cast<T&&>(b);
+    b = static_cast<T&&>(tmp);
+}
+template<class T> void swap(T*& a, T*& b) noexcept {
+    T* tmp = a;
+    a = b;
+    b = tmp;
+}
+
+}}
+
+#endif
 #ifndef Corrade_Containers_ScopeGuard_h
 #define Corrade_Containers_ScopeGuard_h
 
@@ -66,13 +154,15 @@ class ScopeGuard {
         template<class U> explicit ScopeGuard(U(*deleter)());
         #endif
 
+        explicit ScopeGuard(Corrade::NoCreateT) noexcept: _deleterWrapper{}, _deleter{}, _handle{} {}
+
         ScopeGuard(const ScopeGuard&) = delete;
 
-        ScopeGuard(ScopeGuard&&) = delete;
+        ScopeGuard(ScopeGuard&& other) noexcept;
 
         ScopeGuard& operator=(const ScopeGuard&) = delete;
 
-        ScopeGuard& operator=(ScopeGuard&&) = delete;
+        ScopeGuard& operator=(ScopeGuard&&) noexcept;
 
         void release() { _deleterWrapper = nullptr; }
 
@@ -109,6 +199,18 @@ template<class Deleter> ScopeGuard::ScopeGuard(Deleter deleter): _deleter{
     _deleterWrapper = [](void(**deleter)(), void**) {
         (*reinterpret_cast<Deleter*>(deleter))();
     };
+}
+
+inline ScopeGuard::ScopeGuard(ScopeGuard&& other) noexcept: _deleterWrapper{other._deleterWrapper}, _deleter{other._deleter}, _handle{other._handle} {
+    other._deleterWrapper = nullptr;
+}
+
+inline ScopeGuard& ScopeGuard::operator=(ScopeGuard&& other) noexcept {
+    using Utility::swap;
+    swap(other._deleterWrapper, _deleterWrapper);
+    swap(other._deleter, _deleter);
+    swap(other._handle, _handle);
+    return *this;
 }
 
 #ifdef CORRADE_MSVC2015_COMPATIBILITY

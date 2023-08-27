@@ -13,17 +13,21 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    v2020.06-1454-gfc3b7 (2023-08-27)
+    -   It's now possible to construct the EnumSet directly from the underlying
+        enum's type instead of having to cast to the enum type first
+    -   Removed unnecessary function calls for improved debug performace
     v2020.06-1075-gdd71 (2022-10-13)
     -   Initial release
 
-    Generated from Corrade v2020.06-1075-gdd71 (2022-10-13), 256 / 1843 LoC
+    Generated from Corrade v2020.06-1454-gfc3b7 (2023-08-27), 260 / 1705 LoC
 */
 
 /*
     This file is part of Corrade.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
-                2017, 2018, 2019, 2020, 2021, 2022
+                2017, 2018, 2019, 2020, 2021, 2022, 2023
               Vladimír Vondruš <mosra@centrum.cz>
 
     Permission is hereby granted, free of charge, to any person obtaining a
@@ -128,6 +132,8 @@ class EnumSet {
         constexpr /*implicit*/ EnumSet(T value) noexcept:
             _value(static_cast<UnderlyingType>(value)) {}
 
+        constexpr explicit EnumSet(UnderlyingType value) noexcept: _value{value} {}
+
         explicit EnumSet(Corrade::NoInitT) {}
 
         constexpr bool operator==(EnumSet<T, fullValue> other) const {
@@ -135,15 +141,15 @@ class EnumSet {
         }
 
         constexpr bool operator!=(EnumSet<T, fullValue> other) const {
-            return !operator==(other);
+            return _value != other._value;
         }
 
         constexpr bool operator>=(EnumSet<T, fullValue> other) const {
-            return (*this & other) == other;
+            return (_value & other._value) == other._value;
         }
 
         constexpr bool operator<=(EnumSet<T, fullValue> other) const {
-            return (*this & other) == *this;
+            return (_value & other._value) == _value;
         }
 
         constexpr EnumSet<T, fullValue> operator|(EnumSet<T, fullValue> other) const {
@@ -186,8 +192,6 @@ class EnumSet {
         }
 
     private:
-        constexpr explicit EnumSet(UnderlyingType type) noexcept: _value{type} {}
-
         UnderlyingType _value;
 };
 

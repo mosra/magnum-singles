@@ -36,6 +36,6 @@ using namespace Corrade;
 */
 
 int main() {
-    Containers::Optional<int> a{Containers::InPlaceInit, 42};
+    Containers::Optional<int> a{InPlaceInit, 42};
     return *a - 42;
 }
