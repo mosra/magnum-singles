@@ -57,11 +57,15 @@ jobs:
           ./a.out
           $COMPILE CorradeOptional.cpp
           ./a.out
+          $COMPILE CorradePair.cpp
+          ./a.out
           $COMPILE CorradePointer.cpp
           ./a.out
           $COMPILE CorradeReference.cpp
           ./a.out
           $COMPILE CorradeScopeGuard.cpp
+          ./a.out
+          $COMPILE CorradeTriple.cpp
           ./a.out
           $COMPILE CorradeStlForwardArray.cpp
           ./a.out
