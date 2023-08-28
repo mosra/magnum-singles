@@ -15,6 +15,58 @@
     -   GitHub project page — https://github.com/mosra/magnum
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    The library has a separate non-inline implementation part, enable it *just
+    once* like this:
+
+        #define MAGNUM_MATH_IMPLEMENTATION
+        #include <MagnumMath.hpp>
+
+    If you need the deinlined symbols to be exported from a shared library,
+    `#define MAGNUM_EXPORT` as appropriate. In addition, contents of the
+    GlmIntegration and EigenIntegration libraries are included as well ---
+    opt-in by specifying either `#define MAGNUM_MATH_GLM_INTEGRATION` or
+    `#define MAGNUM_MATH_EIGEN_INTEGRATION` before including the file.
+    Including it multiple times with different macros defined works as well.
+
+    v2020.06-2502-gfa079385b (2023-08-28)
+    -   New Range1Dui, Range2Dui, Range3Dui, Degh, Radh, Range1Dh, Range2Dh and
+        Range3Dh typedefs
+    -   New binomialCoefficient(), popcount() and fmod() APIs
+    -   Added r() and g() accessors to Vector2 and rg() to Vector3
+    -   New Color3::fromLinearRgbInt(), toLinearRgbInt() and
+        Color4::fromLinearRgbaInt(), toLinearRgbaInt() for converting a color
+        from/to a packed 24-/32-bit representation without a sRGB conversion;
+        integer-taking fromSrgb() and fromSrgbAlpha() is now renamed to
+        fromSrgbInt() and fromSrgbAlphaInt() for consistency
+    -   Added an off-center Matrix3::projection() and
+        Matrix4::orthographicProjection() overloads
+    -   New Matrix4::orthographicProjectionNear(), orthographicProjectionFar(),
+        perspectiveProjectionNear(), perspectiveProjectionFar() accessors
+    -   Added Quaternion::reflection() and reflectVector() APIs which perform
+        a reflection with a quaternion instead of a rotation
+    -   Ability to create a DualQuaternion from a rotation quaternion and a
+        translation vector
+    -   angle() for Quaternion is now called halfAngle() because that's what it
+        returns, angle() will be eventually reintroduced again but returning
+        the correct value
+    -   Convenience Distance::pointPoint() and pointPointSquared(),
+        Intersection::pointCircle() and pointSphere() APIs as a more
+        self-documenting way of using (a - b).length() or dot()
+    -   New Intersection::rayRange() API
+    -   Conversion between Eigen::AlignedBox and Range
+    -   Added unary operator+ to all math classes
+    -   Matrices can now created from matrices of different sizes with a custom
+        value on new diagonal elements
+    -   data() accessors of all classes now return sized array references
+        instead of pointers
+    -   Fixed Matrix4::normalMatrix() to behave correctly in presence of a
+        reflection
+    -   BoolVector is renamed to BitVector and has new set() and reset() APIs
+    -   64-bit integers and long doubles are no longer compiled away on
+        Emscripten
+    -   Fixed QuadraticBezier2Dd, QuadraticBezier3Dd, CubicBezier2Dd and
+        CubicBezier3Dd typedefs to be actually doubles
+    -   Compatibility with C++20 which removes the <ciso646> header
     v2020.06-0-gfac6f4da2 (2020-06-27)
     -   Various fixes for Clang-CL compatibility
     -   Expanding the APIs to work with Half and long double types
@@ -44,22 +96,24 @@
     v2019.01-241-g93686746a (2019-04-03)
     -   Initial release
 
-    Generated from Corrade v2020.06-0-g61d1b58c (2020-06-27),
-        Magnum v2020.06-0-gfac6f4da2 (2020-06-27) and
-        Magnum Integration v2020.06-0-ga6c469d (2020-06-27), 7748 / 9946 LoC
+    Generated from Corrade v2020.06-1454-gfc3b7fc44 (2023-08-27),
+        Magnum v2020.06-2502-gfa079385b (2023-08-28) and
+        Magnum Integration v2020.06-195-g9588b02 (2023-08-28), 7939 / 10094 LoC
 */
 
 /*
     This file is part of Magnum.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
-                2017, 2018, 2019, 2020 Vladimír Vondruš <mosra@centrum.cz>
+                2017, 2018, 2019, 2020, 2021, 2022, 2023
+              Vladimír Vondruš <mosra@centrum.cz>
     Copyright © 2016 Ashwin Ravichandran <ashwinravichandran24@gmail.com>
     Copyright © 2016, 2018, 2020 Jonathan Hale <squareys@googlemail.com>
     Copyright © 2017 sigman78 <sigman78@gmail.com>
-    Copyright © 2018 Borislav Stanimirov <b.stanimirov@abv.bg>
     Copyright © 2019 Marco Melorio <m.melorio@icloud.com>
+    Copyright © 2020 Janos <janos.meny@googlemail.com>
     Copyright © 2020 Nghia Truong <nghiatruong.vn@gmail.com>
+    Copyright © 2020 Pablo Escobar <mail@rvrs.in>
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the "Software"),
@@ -80,12 +134,6 @@
     DEALINGS IN THE SOFTWARE.
 */
 
-#include <ciso646>
-#ifdef _GLIBCXX_USE_STD_SPEC_FUNCS
-#undef _GLIBCXX_USE_STD_SPEC_FUNCS
-#define _GLIBCXX_USE_STD_SPEC_FUNCS 0
-#endif
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -95,10 +143,10 @@
 #include <cassert>
 #endif
 
-#if defined(_MSC_VER) && _MSC_VER <= 1920
+#if defined(_MSC_VER) && _MSC_VER < 1920
 #define CORRADE_MSVC2017_COMPATIBILITY
 #endif
-#if defined(_MSC_VER) && _MSC_VER <= 1910
+#if defined(_MSC_VER) && _MSC_VER < 1910
 #define CORRADE_MSVC2015_COMPATIBILITY
 #endif
 #ifdef _WIN32
@@ -111,6 +159,20 @@
 #define CORRADE_TARGET_ANDROID
 #endif
 
+#ifdef _MSC_VER
+#ifdef _MSVC_LANG
+#define CORRADE_CXX_STANDARD _MSVC_LANG
+#else
+#define CORRADE_CXX_STANDARD 201103L
+#endif
+#else
+#define CORRADE_CXX_STANDARD __cplusplus
+#endif
+#if CORRADE_CXX_STANDARD >= 202002
+#include <version>
+#else
+#include <ciso646>
+#endif
 #ifdef _LIBCPP_VERSION
 #define CORRADE_TARGET_LIBCXX
 #elif defined(_CPPLIB_VER)
@@ -129,13 +191,19 @@
 #else
 #endif
 
-#ifdef _MSC_VER
-#define CORRADE_TARGET_MSVC
+#ifdef __GNUC__
+#define CORRADE_TARGET_GCC
+#endif
+#ifdef __clang__
+#define CORRADE_TARGET_CLANG
 #endif
 #if defined(__clang__) && defined(_MSC_VER)
 #define CORRADE_TARGET_CLANG_CL
 #endif
-#if defined(CORRADE_TARGET_MSVC) || (defined(CORRADE_TARGET_ANDROID) && !__LP64__) || (defined(CORRADE_TARGET_EMSCRIPTEN) && __LDBL_DIG__ == __DBL_DIG__)
+#ifdef _MSC_VER
+#define CORRADE_TARGET_MSVC
+#endif
+#if defined(CORRADE_TARGET_MSVC) || (defined(CORRADE_TARGET_ANDROID) && !__LP64__) || defined(CORRADE_TARGET_EMSCRIPTEN) || (defined(CORRADE_TARGET_APPLE) && !defined(CORRADE_TARGET_IOS) && defined(CORRADE_TARGET_ARM))
 #define CORRADE_LONG_DOUBLE_SAME_AS_DOUBLE
 #endif
 
@@ -143,6 +211,14 @@
 #define MAGNUM_EXPORT
 #endif
 
+#ifndef Corrade_Utility_StlMath_h
+#define Corrade_Utility_StlMath_h
+#ifdef _GLIBCXX_USE_STD_SPEC_FUNCS
+#undef _GLIBCXX_USE_STD_SPEC_FUNCS
+#define _GLIBCXX_USE_STD_SPEC_FUNCS 0
+#endif
+#include <cmath>
+#endif
 #ifndef Magnum_Types_h
 #define Magnum_Types_h
 
@@ -168,7 +244,7 @@ typedef double Double;
 
 namespace Magnum { namespace Math {
 
-template<std::size_t> class BoolVector;
+template<std::size_t> class BitVector;
 
 template<class> struct Constants;
 
@@ -232,22 +308,26 @@ template<class T> using Range1D = Range<1, T>;
 template<class> class Range2D;
 template<class> class Range3D;
 
-namespace Implementation {
-    template<class> struct StrictWeakOrdering;
-}
-
 }}
 
 #endif
 #ifndef MagnumMath_hpp
 #define MagnumMath_hpp
 
+#define CORRADE_HAS_TYPE(className, ...)                                    \
+template<class U> class className {                                         \
+    template<class T> static char get(T&&, __VA_ARGS__* = nullptr);         \
+    static short get(...);                                                  \
+    public:                                                                 \
+        enum: bool { value = sizeof(get(std::declval<U>())) == sizeof(char) }; \
+}
+
 namespace Magnum {
 
 typedef Math::Half Half;
-typedef Math::BoolVector<2> BoolVector2;
-typedef Math::BoolVector<3> BoolVector3;
-typedef Math::BoolVector<4> BoolVector4;
+typedef Math::BitVector<2> BitVector2;
+typedef Math::BitVector<3> BitVector3;
+typedef Math::BitVector<4> BitVector4;
 typedef Math::Vector2<Float> Vector2;
 typedef Math::Vector3<Float> Vector3;
 typedef Math::Vector4<Float> Vector4;
@@ -323,6 +403,9 @@ typedef Math::Rad<Float> Rad;
 typedef Math::Range1D<Float> Range1D;
 typedef Math::Range2D<Float> Range2D;
 typedef Math::Range3D<Float> Range3D;
+typedef Math::Range1D<UnsignedInt> Range1Dui;
+typedef Math::Range2D<UnsignedInt> Range2Dui;
+typedef Math::Range3D<UnsignedInt> Range3Dui;
 typedef Math::Range1D<Int> Range1Di;
 typedef Math::Range2D<Int> Range2Di;
 typedef Math::Range3D<Int> Range3Di;
@@ -341,6 +424,11 @@ typedef Math::Matrix3x4<Half> Matrix3x4h;
 typedef Math::Matrix4x2<Half> Matrix4x2h;
 typedef Math::Matrix4x3<Half> Matrix4x3h;
 typedef Math::Matrix4x4<Half> Matrix4x4h;
+typedef Math::Deg<Half> Degh;
+typedef Math::Rad<Half> Radh;
+typedef Math::Range1D<Half> Range1Dh;
+typedef Math::Range2D<Half> Range2Dh;
+typedef Math::Range3D<Half> Range3Dh;
 typedef Math::Vector2<Double> Vector2d;
 typedef Math::Vector3<Double> Vector3d;
 typedef Math::Vector4<Double> Vector4d;
@@ -355,10 +443,10 @@ typedef Math::Matrix2x4<Double> Matrix2x4d;
 typedef Math::Matrix4x2<Double> Matrix4x2d;
 typedef Math::Matrix3x4<Double> Matrix3x4d;
 typedef Math::Matrix4x3<Double> Matrix4x3d;
-typedef Math::QuadraticBezier2D<Float> QuadraticBezier2Dd;
-typedef Math::QuadraticBezier3D<Float> QuadraticBezier3Dd;
-typedef Math::CubicBezier2D<Float> CubicBezier2Dd;
-typedef Math::CubicBezier3D<Float> CubicBezier3Dd;
+typedef Math::QuadraticBezier2D<Double> QuadraticBezier2Dd;
+typedef Math::QuadraticBezier3D<Double> QuadraticBezier3Dd;
+typedef Math::CubicBezier2D<Double> CubicBezier2Dd;
+typedef Math::CubicBezier3D<Double> CubicBezier3Dd;
 typedef Math::CubicHermite1D<Double> CubicHermite1Dd;
 typedef Math::CubicHermite2D<Double> CubicHermite2Dd;
 typedef Math::CubicHermite3D<Double> CubicHermite3Dd;
@@ -473,9 +561,7 @@ template<> struct IsScalar<unsigned long long>: std::true_type {};
 template<> struct IsScalar<float>: std::true_type {};
 template<> struct IsScalar<Half>: std::true_type {};
 template<> struct IsScalar<double>: std::true_type {};
-#ifndef CORRADE_TARGET_EMSCRIPTEN
 template<> struct IsScalar<long double>: std::true_type {};
-#endif
 template<template<class> class Derived, class T> struct IsScalar<Unit<Derived, T>>: std::true_type {};
 template<class T> struct IsScalar<Deg<T>>: std::true_type {};
 template<class T> struct IsScalar<Rad<T>>: std::true_type {};
@@ -520,9 +606,7 @@ template<class T> struct IsFloatingPoint
 template<> struct IsFloatingPoint<Float>: std::true_type {};
 template<> struct IsFloatingPoint<Half>: std::true_type {};
 template<> struct IsFloatingPoint<Double>: std::true_type {};
-#ifndef CORRADE_TARGET_EMSCRIPTEN
 template<> struct IsFloatingPoint<long double>: std::true_type {};
-#endif
 template<std::size_t size, class T> struct IsFloatingPoint<Vector<size, T>>: IsFloatingPoint<T> {};
 template<class T> struct IsFloatingPoint<Vector2<T>>: IsFloatingPoint<T> {};
 template<class T> struct IsFloatingPoint<Vector3<T>>: IsFloatingPoint<T> {};
@@ -607,10 +691,8 @@ namespace Implementation {
     _c(Short)
     _c(UnsignedInt)
     _c(Int)
-    #ifndef CORRADE_TARGET_EMSCRIPTEN
     _c(UnsignedLong)
     _c(Long)
-    #endif
     _c(Float)
     _c(Half)
     _c(Double)
@@ -640,14 +722,12 @@ template<> struct TypeTraits<UnsignedInt>: Implementation::TypeTraitsIntegral<Un
 template<> struct TypeTraits<Int>: Implementation::TypeTraitsIntegral<Int> {
     typedef Double FloatingPointType;
 };
-#ifndef CORRADE_TARGET_EMSCRIPTEN
 template<> struct TypeTraits<UnsignedLong>: Implementation::TypeTraitsIntegral<UnsignedLong> {
     typedef long double FloatingPointType;
 };
 template<> struct TypeTraits<Long>: Implementation::TypeTraitsIntegral<Long> {
     typedef long double FloatingPointType;
 };
-#endif
 
 namespace Implementation {
 
@@ -718,38 +798,38 @@ template<class T> inline bool isNormalizedSquared(T lengthSquared) {
 }}
 
 #endif
-#ifndef Corrade_Containers_Tags_h
-#define Corrade_Containers_Tags_h
+#ifndef Corrade_Tags_h
+#define Corrade_Tags_h
 
-namespace Corrade { namespace Containers {
+namespace Corrade {
 
 struct DefaultInitT {
-    struct Init{};
+    struct Init {};
     constexpr explicit DefaultInitT(Init) {}
 };
 
 struct ValueInitT {
-    struct Init{};
+    struct Init {};
     constexpr explicit ValueInitT(Init) {}
 };
 
 struct NoInitT {
-    struct Init{};
+    struct Init {};
     constexpr explicit NoInitT(Init) {}
 };
 
 struct NoCreateT {
-    struct Init{};
+    struct Init {};
     constexpr explicit NoCreateT(Init) {}
 };
 
 struct DirectInitT {
-    struct Init{};
+    struct Init {};
     constexpr explicit DirectInitT(Init) {}
 };
 
 struct InPlaceInitT {
-    struct Init{};
+    struct Init {};
     constexpr explicit InPlaceInitT(Init) {}
 };
 
@@ -765,7 +845,7 @@ constexpr DirectInitT DirectInit{DirectInitT::Init{}};
 
 constexpr InPlaceInitT InPlaceInit{InPlaceInitT::Init{}};
 
-}}
+}
 
 #endif
 #ifndef Magnum_Tags_h
@@ -773,16 +853,24 @@ constexpr InPlaceInitT InPlaceInit{InPlaceInitT::Init{}};
 
 namespace Magnum {
 
-typedef Corrade::Containers::NoInitT NoInitT;
+using Corrade::DefaultInitT;
 
-struct NoCreateT {
-    struct Init{};
-    constexpr explicit NoCreateT(Init) {}
+using Corrade::NoInitT;
+
+using Corrade::NoCreateT;
+
+struct NoAllocateT {
+    struct Init {};
+    constexpr explicit NoAllocateT(Init) {}
 };
 
-using Corrade::Containers::NoInit;
+using Corrade::DefaultInit;
 
-constexpr NoCreateT NoCreate{NoCreateT::Init{}};
+using Corrade::NoInit;
+
+using Corrade::NoCreate;
+
+constexpr NoAllocateT NoAllocate{NoAllocateT::Init{}};
 
 }
 
@@ -830,8 +918,6 @@ template<template<class> class Derived, class T> class Unit {
 
         template<class U> constexpr explicit Unit(Unit<Derived, U> value) noexcept: _value(T(value._value)) {}
 
-        constexpr /*implicit*/ Unit(const Unit<Derived, T>& other) noexcept = default;
-
         constexpr explicit operator T() const { return _value; }
 
         constexpr bool operator==(Unit<Derived, T> other) const {
@@ -857,6 +943,8 @@ template<template<class> class Derived, class T> class Unit {
         constexpr bool operator>=(Unit<Derived, T> other) const {
             return !operator<(other);
         }
+
+        constexpr Unit<Derived, T> operator+() const { return *this; }
 
         constexpr Unit<Derived, T> operator-() const {
             return Unit<Derived, T>(-_value);
@@ -973,14 +1061,42 @@ template<class T> constexpr Rad<T>::Rad(Unit<Deg, T> value): Unit<Math::Rad, T>(
 
 }}
 
+#endif
+#ifndef Corrade_Utility_Move_h
+#define Corrade_Utility_Move_h
+
 namespace Corrade { namespace Utility {
+
+template<class T> constexpr T&& forward(typename std::remove_reference<T>::type& t) noexcept {
+    return static_cast<T&&>(t);
+}
+
+template<class T> constexpr T&& forward(typename std::remove_reference<T>::type&& t) noexcept {
+    static_assert(!std::is_lvalue_reference<T>::value, "T can't be a lvalue reference");
+    return static_cast<T&&>(t);
+}
+
+template<class T> constexpr typename std::remove_reference<T>::type&& move(T&& t) noexcept {
+    return static_cast<typename std::remove_reference<T>::type&&>(t);
+}
+
+template<class T> void swap(T& a, T& b) noexcept(std::is_nothrow_move_constructible<T>::value && std::is_nothrow_move_assignable<T>::value) {
+    T tmp = static_cast<T&&>(a);
+    a = static_cast<T&&>(b);
+    b = static_cast<T&&>(tmp);
+}
+template<class T> void swap(T*& a, T*& b) noexcept {
+    T* tmp = a;
+    a = b;
+    b = tmp;
+}
 
 }}
 
 #endif
 #ifndef CORRADE_ASSERT
 #ifdef NDEBUG
-#define CORRADE_ASSERT(condition, message, returnValue) do {} while(0)
+#define CORRADE_ASSERT(condition, message, returnValue) do {} while(false)
 #else
 #define CORRADE_ASSERT(condition, message, returnValue) assert(condition)
 #endif
@@ -1008,9 +1124,9 @@ namespace Corrade { namespace Utility {
 
 #ifndef CORRADE_INTERNAL_ASSERT_UNREACHABLE
 #ifdef NDEBUG
-#ifdef __GNUC__
+#ifdef CORRADE_TARGET_GCC
 #define CORRADE_INTERNAL_ASSERT_UNREACHABLE() __builtin_unreachable()
-#elif defined(_MSC_VER)
+#elif defined(CORRADE_TARGET_MSVC)
 #define CORRADE_INTERNAL_ASSERT_UNREACHABLE() __assume(0)
 #else
 #define CORRADE_INTERNAL_ASSERT_UNREACHABLE() std::abort()
@@ -1019,69 +1135,108 @@ namespace Corrade { namespace Utility {
 #define CORRADE_INTERNAL_ASSERT_UNREACHABLE() assert(!"unreachable code")
 #endif
 #endif
-#ifndef Magnum_Math_BoolVector_h
-#define Magnum_Math_BoolVector_h
+#ifndef CORRADE_DEBUG_ASSERT
+#define CORRADE_DEBUG_ASSERT(condition, message, returnValue)               \
+    CORRADE_ASSERT(condition, message, returnValue)
+#endif
+
+#ifndef CORRADE_CONSTEXPR_DEBUG_ASSERT
+#define CORRADE_CONSTEXPR_DEBUG_ASSERT(condition, message)                  \
+    CORRADE_CONSTEXPR_ASSERT(condition, message)
+#endif
+
+#ifndef CORRADE_INTERNAL_DEBUG_ASSERT_OUTPUT
+#define CORRADE_INTERNAL_DEBUG_ASSERT_OUTPUT(call)                          \
+    CORRADE_INTERNAL_ASSERT_OUTPUT(call)
+#endif
+
+#ifndef CORRADE_INTERNAL_DEBUG_ASSERT_UNREACHABLE
+#define CORRADE_INTERNAL_DEBUG_ASSERT_UNREACHABLE()                         \
+    CORRADE_INTERNAL_ASSERT_UNREACHABLE()
+#endif
+#ifndef Corrade_Containers_sequenceHelpers_h
+#define Corrade_Containers_sequenceHelpers_h
+
+namespace Corrade { namespace Containers { namespace Implementation {
+
+template<std::size_t ...> struct Sequence {};
+
+template<class A, class B> struct SequenceConcat;
+template<std::size_t ...first, std::size_t ...second> struct SequenceConcat<Sequence<first...>, Sequence<second...>> {
+    typedef Sequence<first..., (sizeof...(first) + second)...> Type;
+};
+
+template<std::size_t N> struct GenerateSequence:
+    SequenceConcat<typename GenerateSequence<N/2>::Type,
+                   typename GenerateSequence<N - N/2>::Type> {};
+template<> struct GenerateSequence<1> { typedef Sequence<0> Type; };
+template<> struct GenerateSequence<0> { typedef Sequence<> Type; };
+
+}}}
+
+#endif
+#ifndef Magnum_Math_BitVector_h
+#define Magnum_Math_BitVector_h
 
 namespace Magnum { namespace Math {
 
 namespace Implementation {
-    template<std::size_t, class> struct BoolVectorConverter;
-
-    template<std::size_t ...> struct Sequence {};
-
-    template<std::size_t N, std::size_t ...sequence> struct GenerateSequence:
-        GenerateSequence<N-1, N-1, sequence...> {};
-
-    template<std::size_t ...sequence> struct GenerateSequence<0, sequence...> {
-        typedef Sequence<sequence...> Type;
-    };
+    template<std::size_t, class> struct BitVectorConverter;
 
     template<class T> constexpr T repeat(T value, std::size_t) { return value; }
 }
 
-template<std::size_t size> class BoolVector {
-    static_assert(size != 0, "BoolVector cannot have zero elements");
+template<std::size_t size> class BitVector {
+    static_assert(size != 0, "BitVector cannot have zero elements");
 
     public:
         enum: std::size_t {
             Size = size,
-            DataSize = (size-1)/8+1
+            DataSize = (size + 7)/8
         };
 
-        constexpr /*implicit*/ BoolVector() noexcept: _data{} {}
+        constexpr /*implicit*/ BitVector() noexcept: _data{} {}
 
-        constexpr explicit BoolVector(ZeroInitT) noexcept: _data{} {}
+        constexpr explicit BitVector(ZeroInitT) noexcept: _data{} {}
 
-        explicit BoolVector(Magnum::NoInitT) noexcept {}
+        explicit BitVector(Magnum::NoInitT) noexcept {}
 
-        template<class ...T, class U = typename std::enable_if<sizeof...(T)+1 == DataSize, bool>::type> constexpr /*implicit*/ BoolVector(UnsignedByte first, T... next) noexcept: _data{first, UnsignedByte(next)...} {}
+        template<class ...T, class U = typename std::enable_if<sizeof...(T)+1 == DataSize, bool>::type> constexpr /*implicit*/ BitVector(UnsignedByte first, T... next) noexcept: _data{first, UnsignedByte(next)...} {}
 
-        template<class T, class U = typename std::enable_if<std::is_same<bool, T>::value && size != 1, bool>::type> constexpr explicit BoolVector(T value) noexcept: BoolVector(typename Implementation::GenerateSequence<DataSize>::Type(), value ? FullSegmentMask : 0) {}
+        template<class T, class U = typename std::enable_if<std::is_same<bool, T>::value && size != 1, bool>::type> constexpr explicit BitVector(T value) noexcept: BitVector(typename Corrade::Containers::Implementation::GenerateSequence<DataSize>::Type{}, value ? FullSegmentMask : 0) {}
 
-        template<class U, class V = decltype(Implementation::BoolVectorConverter<size, U>::from(std::declval<U>()))> constexpr explicit BoolVector(const U& other) noexcept: BoolVector{Implementation::BoolVectorConverter<size, U>::from(other)} {}
+        template<class U, class V = decltype(Implementation::BitVectorConverter<size, U>::from(std::declval<U>()))> constexpr explicit BitVector(const U& other) noexcept: BitVector{Implementation::BitVectorConverter<size, U>::from(other)} {}
 
-        constexpr /*implicit*/ BoolVector(const BoolVector<size>&) noexcept = default;
-
-        template<class U, class V = decltype(Implementation::BoolVectorConverter<size, U>::to(std::declval<BoolVector<size>>()))> constexpr explicit operator U() const {
-            return Implementation::BoolVectorConverter<size, U>::to(*this);
+        template<class U, class V = decltype(Implementation::BitVectorConverter<size, U>::to(std::declval<BitVector<size>>()))> constexpr explicit operator U() const {
+            return Implementation::BitVectorConverter<size, U>::to(*this);
         }
 
-        UnsignedByte* data() { return _data; }
-        constexpr const UnsignedByte* data() const { return _data; }
+        auto data() -> UnsignedByte(&)[DataSize] { return _data; }
+        constexpr auto data() const -> const UnsignedByte(&)[DataSize] { return _data; }
 
         constexpr bool operator[](std::size_t i) const {
             return (_data[i/8] >> i%8) & 0x01;
         }
 
-        BoolVector<size>& set(std::size_t i, bool value) {
+        BitVector<size>& set(std::size_t i) {
+            _data[i/8] |= 1 << i%8;
+            return *this;
+        }
+
+        BitVector<size>& reset(std::size_t i) {
+            _data[i/8] &= ~(1 << i%8);
+            return *this;
+        }
+
+        BitVector<size>& set(std::size_t i, bool value) {
             value ? _data[i/8] |=  (1 << i%8) :
                     _data[i/8] &= ~(1 << i%8);
             return *this;
         }
 
-        bool operator==(const BoolVector<size>& other) const;
+        bool operator==(const BitVector<size>& other) const;
 
-        bool operator!=(const BoolVector<size>& other) const {
+        bool operator!=(const BitVector<size>& other) const {
             return !operator==(other);
         }
 
@@ -1093,49 +1248,49 @@ template<std::size_t size> class BoolVector {
 
         bool any() const { return !none(); }
 
-        BoolVector<size> operator~() const;
+        BitVector<size> operator~() const;
 
-        BoolVector<size> operator!() const { return operator~(); }
+        BitVector<size> operator!() const { return operator~(); }
 
-        BoolVector<size>& operator&=(const BoolVector<size>& other) {
+        BitVector<size>& operator&=(const BitVector<size>& other) {
             for(std::size_t i = 0; i != DataSize; ++i)
                 _data[i] &= other._data[i];
 
             return *this;
         }
 
-        BoolVector<size> operator&(const BoolVector<size>& other) const {
-            return BoolVector<size>(*this) &= other;
+        BitVector<size> operator&(const BitVector<size>& other) const {
+            return BitVector<size>(*this) &= other;
         }
 
-        BoolVector<size> operator&&(const BoolVector<size>& other) const {
-            return BoolVector<size>(*this) &= other;
+        BitVector<size> operator&&(const BitVector<size>& other) const {
+            return BitVector<size>(*this) &= other;
         }
 
-        BoolVector<size>& operator|=(const BoolVector<size>& other) {
+        BitVector<size>& operator|=(const BitVector<size>& other) {
             for(std::size_t i = 0; i != DataSize; ++i)
                 _data[i] |= other._data[i];
 
             return *this;
         }
 
-        BoolVector<size> operator|(const BoolVector<size>& other) const {
-            return BoolVector<size>(*this) |= other;
+        BitVector<size> operator|(const BitVector<size>& other) const {
+            return BitVector<size>(*this) |= other;
         }
 
-        BoolVector<size> operator||(const BoolVector<size>& other) const {
-            return BoolVector<size>(*this) |= other;
+        BitVector<size> operator||(const BitVector<size>& other) const {
+            return BitVector<size>(*this) |= other;
         }
 
-        BoolVector<size>& operator^=(const BoolVector<size>& other) {
+        BitVector<size>& operator^=(const BitVector<size>& other) {
             for(std::size_t i = 0; i != DataSize; ++i)
                 _data[i] ^= other._data[i];
 
             return *this;
         }
 
-        BoolVector<size> operator^(const BoolVector<size>& other) const {
-            return BoolVector<size>(*this) ^= other;
+        BitVector<size> operator^(const BitVector<size>& other) const {
+            return BitVector<size>(*this) ^= other;
         }
 
     private:
@@ -1144,12 +1299,12 @@ template<std::size_t size> class BoolVector {
             LastSegmentMask = (1 << size%8) - 1
         };
 
-        template<std::size_t ...sequence> constexpr explicit BoolVector(Implementation::Sequence<sequence...>, UnsignedByte value): _data{Implementation::repeat(value, sequence)...} {}
+        template<std::size_t ...sequence> constexpr explicit BitVector(Corrade::Containers::Implementation::Sequence<sequence...>, UnsignedByte value): _data{Implementation::repeat(value, sequence)...} {}
 
-        UnsignedByte _data[(size-1)/8+1];
+        UnsignedByte _data[DataSize];
 };
 
-template<std::size_t size> inline bool BoolVector<size>::operator==(const BoolVector<size>& other) const {
+template<std::size_t size> inline bool BitVector<size>::operator==(const BitVector<size>& other) const {
     for(std::size_t i = 0; i != size/8; ++i)
         if(_data[i] != other._data[i]) return false;
 
@@ -1159,7 +1314,7 @@ template<std::size_t size> inline bool BoolVector<size>::operator==(const BoolVe
     return true;
 }
 
-template<std::size_t size> inline bool BoolVector<size>::all() const {
+template<std::size_t size> inline bool BitVector<size>::all() const {
     for(std::size_t i = 0; i != size/8; ++i)
         if(_data[i] != FullSegmentMask) return false;
 
@@ -1169,7 +1324,7 @@ template<std::size_t size> inline bool BoolVector<size>::all() const {
     return true;
 }
 
-template<std::size_t size> inline bool BoolVector<size>::none() const {
+template<std::size_t size> inline bool BitVector<size>::none() const {
     for(std::size_t i = 0; i != size/8; ++i)
         if(_data[i]) return false;
 
@@ -1179,34 +1334,13 @@ template<std::size_t size> inline bool BoolVector<size>::none() const {
     return true;
 }
 
-template<std::size_t size> inline BoolVector<size> BoolVector<size>::operator~() const {
-    BoolVector<size> out{Magnum::NoInit};
+template<std::size_t size> inline BitVector<size> BitVector<size>::operator~() const {
+    BitVector<size> out{Magnum::NoInit};
 
     for(std::size_t i = 0; i != DataSize; ++i)
         out._data[i] = ~_data[i];
 
     return out;
-}
-
-namespace Implementation {
-
-template<std::size_t size> struct StrictWeakOrdering<BoolVector<size>> {
-    bool operator()(const BoolVector<size>& a, const BoolVector<size>& b) const {
-        auto ad = a.data();
-        auto bd = b.data();
-        for(std::size_t i = 0; i < BoolVector<size>::DataSize - 1; ++i) {
-            if(ad[i] < bd[i])
-                return true;
-            if(ad[i] > bd[i])
-                return false;
-        }
-
-        constexpr UnsignedByte mask = UnsignedByte(0xFF) >> (BoolVector<size>::DataSize * 8 - size);
-        constexpr std::size_t i = BoolVector<size>::DataSize - 1;
-        return (ad[i] & mask) < (bd[i] & mask);
-    }
-};
-
 }
 
 }}
@@ -1264,7 +1398,7 @@ template<std::size_t size, class T> inline T dot(const Vector<size, T>& a, const
 template<std::size_t size, class FloatingPoint> inline
 typename std::enable_if<std::is_floating_point<FloatingPoint>::value, Rad<FloatingPoint>>::type
 angle(const Vector<size, FloatingPoint>& normalizedA, const Vector<size, FloatingPoint>& normalizedB) {
-    CORRADE_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
+    CORRADE_DEBUG_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
         "Math::angle(): vectors" << normalizedA << "and" << normalizedB << "are not normalized", {});
     return Rad<FloatingPoint>(std::acos(clamp(dot(normalizedA, normalizedB), FloatingPoint(-1), FloatingPoint(1))));
 }
@@ -1287,7 +1421,7 @@ template<std::size_t size, class T> class Vector {
         }
 
         template<std::size_t otherSize> constexpr static Vector<size, T> pad(const Vector<otherSize, T>& a, T value = T()) {
-            return padInternal<otherSize>(typename Implementation::GenerateSequence<size>::Type(), a, value);
+            return padInternal<otherSize>(typename Corrade::Containers::Implementation::GenerateSequence<size>::Type{}, a, value);
         }
 
         constexpr /*implicit*/ Vector() noexcept: _data{} {}
@@ -1298,20 +1432,18 @@ template<std::size_t size, class T> class Vector {
 
         template<class ...U, class V = typename std::enable_if<sizeof...(U)+1 == size, T>::type> constexpr /*implicit*/ Vector(T first, U... next) noexcept: _data{first, next...} {}
 
-        template<class U, class V = typename std::enable_if<std::is_same<T, U>::value && size != 1, T>::type> constexpr explicit Vector(U value) noexcept: Vector(typename Implementation::GenerateSequence<size>::Type(), value) {}
+        template<class U, class V = typename std::enable_if<std::is_same<T, U>::value && size != 1, T>::type> constexpr explicit Vector(U value) noexcept: Vector(typename Corrade::Containers::Implementation::GenerateSequence<size>::Type{}, value) {}
 
-        template<class U> constexpr explicit Vector(const Vector<size, U>& other) noexcept: Vector(typename Implementation::GenerateSequence<size>::Type(), other) {}
+        template<class U> constexpr explicit Vector(const Vector<size, U>& other) noexcept: Vector(typename Corrade::Containers::Implementation::GenerateSequence<size>::Type{}, other) {}
 
         template<class U, class V = decltype(Implementation::VectorConverter<size, T, U>::from(std::declval<U>()))> constexpr explicit Vector(const U& other) noexcept: Vector(Implementation::VectorConverter<size, T, U>::from(other)) {}
-
-        constexpr /*implicit*/ Vector(const Vector<size, T>&) noexcept = default;
 
         template<class U, class V = decltype(Implementation::VectorConverter<size, T, U>::to(std::declval<Vector<size, T>>()))> constexpr explicit operator U() const {
             return Implementation::VectorConverter<size, T, U>::to(*this);
         }
 
-        T* data() { return _data; }
-        constexpr const T* data() const { return _data; }
+        auto data() -> T(&)[size] { return _data; }
+        constexpr auto data() const -> const T(&)[size] { return _data; }
 
         T& operator[](std::size_t pos) { return _data[pos]; }
         constexpr T operator[](std::size_t pos) const { return _data[pos]; }
@@ -1327,13 +1459,13 @@ template<std::size_t size, class T> class Vector {
             return !operator==(other);
         }
 
-        BoolVector<size> operator<(const Vector<size, T>& other) const;
+        BitVector<size> operator<(const Vector<size, T>& other) const;
 
-        BoolVector<size> operator<=(const Vector<size, T>& other) const;
+        BitVector<size> operator<=(const Vector<size, T>& other) const;
 
-        BoolVector<size> operator>=(const Vector<size, T>& other) const;
+        BitVector<size> operator>=(const Vector<size, T>& other) const;
 
-        BoolVector<size> operator>(const Vector<size, T>& other) const;
+        BitVector<size> operator>(const Vector<size, T>& other) const;
 
         bool isZero() const {
             return Implementation::IsZero<std::is_integral<T>::value>{}(*this);
@@ -1342,6 +1474,8 @@ template<std::size_t size, class T> class Vector {
         bool isNormalized() const {
             return Implementation::isNormalizedSquared(dot());
         }
+
+        Vector<size, T> operator+() const { return *this; }
 
         template<class U = T> typename std::enable_if<std::is_signed<U>::value, Vector<size, T>>::type
         operator-() const;
@@ -1436,7 +1570,7 @@ template<std::size_t size, class T> class Vector {
         projectedOntoNormalized(const Vector<size, T>& line) const;
 
         constexpr Vector<size, T> flipped() const {
-            return flippedInternal(typename Implementation::GenerateSequence<size>::Type{});
+            return flippedInternal(typename Corrade::Containers::Implementation::GenerateSequence<size>::Type{});
         }
 
         T sum() const;
@@ -1461,26 +1595,26 @@ template<std::size_t size, class T> class Vector {
         template<std::size_t, std::size_t, bool> friend struct Implementation::ScatterComponentOr;
         template<class T_, std::size_t valueSize, char, char...> friend constexpr T_ Implementation::scatterRecursive(const T_&, const Vector<valueSize, typename T_::Type>&, std::size_t);
 
-        template<std::size_t size_, class T_> friend BoolVector<size_> equal(const Vector<size_, T_>&, const Vector<size_, T_>&);
-        template<std::size_t size_, class T_> friend BoolVector<size_> notEqual(const Vector<size_, T_>&, const Vector<size_, T_>&);
+        template<std::size_t size_, class T_> friend BitVector<size_> equal(const Vector<size_, T_>&, const Vector<size_, T_>&);
+        template<std::size_t size_, class T_> friend BitVector<size_> notEqual(const Vector<size_, T_>&, const Vector<size_, T_>&);
 
         template<std::size_t size_, class U> friend U dot(const Vector<size_, U>&, const Vector<size_, U>&);
 
-        template<class U, std::size_t ...sequence> constexpr explicit Vector(Implementation::Sequence<sequence...>, const Vector<size, U>& vector) noexcept: _data{T(vector._data[sequence])...} {}
+        template<class U, std::size_t ...sequence> constexpr explicit Vector(Corrade::Containers::Implementation::Sequence<sequence...>, const Vector<size, U>& vector) noexcept: _data{T(vector._data[sequence])...} {}
 
-        template<std::size_t ...sequence> constexpr explicit Vector(Implementation::Sequence<sequence...>, T value) noexcept: _data{Implementation::repeat(value, sequence)...} {}
+        template<std::size_t ...sequence> constexpr explicit Vector(Corrade::Containers::Implementation::Sequence<sequence...>, T value) noexcept: _data{Implementation::repeat(value, sequence)...} {}
 
-        template<std::size_t otherSize, std::size_t ...sequence> constexpr static Vector<size, T> padInternal(Implementation::Sequence<sequence...>, const Vector<otherSize, T>& a, T value) {
+        template<std::size_t otherSize, std::size_t ...sequence> constexpr static Vector<size, T> padInternal(Corrade::Containers::Implementation::Sequence<sequence...>, const Vector<otherSize, T>& a, T value) {
             return {sequence < otherSize ? a[sequence] : value...};
         }
 
-        template<std::size_t ...sequence> constexpr Vector<size, T> flippedInternal(Implementation::Sequence<sequence...>) const {
+        template<std::size_t ...sequence> constexpr Vector<size, T> flippedInternal(Corrade::Containers::Implementation::Sequence<sequence...>) const {
             return {_data[size - 1 - sequence]...};
         }
 };
 
-template<std::size_t size, class T> inline BoolVector<size> equal(const Vector<size, T>& a, const Vector<size, T>& b) {
-    BoolVector<size> out;
+template<std::size_t size, class T> inline BitVector<size> equal(const Vector<size, T>& a, const Vector<size, T>& b) {
+    BitVector<size> out;
 
     for(std::size_t i = 0; i != size; ++i)
         out.set(i, TypeTraits<T>::equals(a._data[i], b._data[i]));
@@ -1488,8 +1622,8 @@ template<std::size_t size, class T> inline BoolVector<size> equal(const Vector<s
     return out;
 }
 
-template<std::size_t size, class T> inline BoolVector<size> notEqual(const Vector<size, T>& a, const Vector<size, T>& b) {
-    BoolVector<size> out;
+template<std::size_t size, class T> inline BitVector<size> notEqual(const Vector<size, T>& a, const Vector<size, T>& b) {
+    BitVector<size> out;
 
     for(std::size_t i = 0; i != size; ++i)
         out.set(i, !TypeTraits<T>::equals(a._data[i], b._data[i]));
@@ -1736,6 +1870,9 @@ operator/(const Vector<size, Integral>& a, const Vector<size, FloatingPoint>& b)
         return Math::Vector<size, T>::pad(a, value);                        \
     }                                                                       \
                                                                             \
+    Type<T> operator+() const {                                             \
+        return Math::Vector<size, T>::operator+();                          \
+    }                                                                       \
     template<class U = T> typename std::enable_if<std::is_signed<U>::value, Type<T>>::type \
     operator-() const {                                                     \
         return Math::Vector<size, T>::operator-();                          \
@@ -1896,8 +2033,8 @@ operator/(const Vector<size, Integral>& a, const Vector<size, FloatingPoint>& b)
         return static_cast<const Math::Vector<size, Integral>&>(a)/b;       \
     }
 
-template<std::size_t size, class T> inline BoolVector<size> Vector<size, T>::operator<(const Vector<size, T>& other) const {
-    BoolVector<size> out;
+template<std::size_t size, class T> inline BitVector<size> Vector<size, T>::operator<(const Vector<size, T>& other) const {
+    BitVector<size> out;
 
     for(std::size_t i = 0; i != size; ++i)
         out.set(i, _data[i] < other._data[i]);
@@ -1905,8 +2042,8 @@ template<std::size_t size, class T> inline BoolVector<size> Vector<size, T>::ope
     return out;
 }
 
-template<std::size_t size, class T> inline BoolVector<size> Vector<size, T>::operator<=(const Vector<size, T>& other) const {
-    BoolVector<size> out;
+template<std::size_t size, class T> inline BitVector<size> Vector<size, T>::operator<=(const Vector<size, T>& other) const {
+    BitVector<size> out;
 
     for(std::size_t i = 0; i != size; ++i)
         out.set(i, _data[i] <= other._data[i]);
@@ -1914,8 +2051,8 @@ template<std::size_t size, class T> inline BoolVector<size> Vector<size, T>::ope
     return out;
 }
 
-template<std::size_t size, class T> inline BoolVector<size> Vector<size, T>::operator>=(const Vector<size, T>& other) const {
-    BoolVector<size> out;
+template<std::size_t size, class T> inline BitVector<size> Vector<size, T>::operator>=(const Vector<size, T>& other) const {
+    BitVector<size> out;
 
     for(std::size_t i = 0; i != size; ++i)
         out.set(i, _data[i] >= other._data[i]);
@@ -1923,8 +2060,8 @@ template<std::size_t size, class T> inline BoolVector<size> Vector<size, T>::ope
     return out;
 }
 
-template<std::size_t size, class T> inline BoolVector<size> Vector<size, T>::operator>(const Vector<size, T>& other) const {
-    BoolVector<size> out;
+template<std::size_t size, class T> inline BitVector<size> Vector<size, T>::operator>(const Vector<size, T>& other) const {
+    BitVector<size> out;
 
     for(std::size_t i = 0; i != size; ++i)
         out.set(i, _data[i] > other._data[i]);
@@ -1946,7 +2083,7 @@ Vector<size, T>::operator-() const {
 template<std::size_t size, class T>
 template<class U> inline typename std::enable_if<std::is_floating_point<U>::value, Vector<size, T>>::type
 Vector<size, T>::projectedOntoNormalized(const Vector<size, T>& line) const {
-    CORRADE_ASSERT(line.isNormalized(),
+    CORRADE_DEBUG_ASSERT(line.isNormalized(),
         "Math::Vector::projectedOntoNormalized(): line" << line << "is not normalized", {});
     return line*Math::dot(*this, line);
 }
@@ -2014,23 +2151,6 @@ template<std::size_t size, class T> inline std::pair<T, T> Vector<size, T>::minm
     return {min, max};
 }
 
-namespace Implementation {
-
-template<std::size_t size, class T> struct StrictWeakOrdering<Vector<size, T>> {
-    bool operator()(const Vector<size, T>& a, const Vector<size, T>& b) const {
-        for(std::size_t i = 0; i < size; ++i) {
-            if(a[i] < b[i])
-                return true;
-            if(a[i] > b[i])
-                return false;
-        }
-
-        return false;
-    }
-};
-
-}
-
 }}
 
 #endif
@@ -2062,17 +2182,17 @@ template<UnsignedInt order, UnsignedInt dimensions, class T> class Bezier {
             return {a.point(), a.outTangent()/T(3) - a.point(), b.point() - b.inTangent()/T(3), b.point()};
         }
 
-        constexpr /*implicit*/ Bezier() noexcept: Bezier<order, dimensions, T>{typename Implementation::GenerateSequence<order + 1>::Type{}, ZeroInit} {}
+        constexpr /*implicit*/ Bezier() noexcept: Bezier<order, dimensions, T>{typename Corrade::Containers::Implementation::GenerateSequence<order + 1>::Type{}, ZeroInit} {}
 
-        constexpr explicit Bezier(ZeroInitT) noexcept: Bezier<order, dimensions, T>{typename Implementation::GenerateSequence<order + 1>::Type{}, ZeroInit} {}
+        constexpr explicit Bezier(ZeroInitT) noexcept: Bezier<order, dimensions, T>{typename Corrade::Containers::Implementation::GenerateSequence<order + 1>::Type{}, ZeroInit} {}
 
-        explicit Bezier(Magnum::NoInitT) noexcept: Bezier<order, dimensions, T>{typename Implementation::GenerateSequence<order + 1>::Type{}, Magnum::NoInit} {}
+        explicit Bezier(Magnum::NoInitT) noexcept: Bezier<order, dimensions, T>{typename Corrade::Containers::Implementation::GenerateSequence<order + 1>::Type{}, Magnum::NoInit} {}
 
         template<typename... U> constexpr /*implicit*/ Bezier(const Vector<dimensions, T>& first, U... next) noexcept: _data{first, next...} {
             static_assert(sizeof...(U) + 1 == order + 1, "Wrong number of arguments");
         }
 
-        template<class U> constexpr explicit Bezier(const Bezier<order, dimensions, U>& other) noexcept: Bezier{typename Implementation::GenerateSequence<order + 1>::Type(), other} {}
+        template<class U> constexpr explicit Bezier(const Bezier<order, dimensions, U>& other) noexcept: Bezier{typename Corrade::Containers::Implementation::GenerateSequence<order + 1>::Type{}, other} {}
 
         template<class U, class V = decltype(Implementation::BezierConverter<order, dimensions, T, U>::from(std::declval<U>()))> constexpr explicit Bezier(const U& other) noexcept: Bezier<order, dimensions, T>{Implementation::BezierConverter<order, dimensions, T, U>::from(other)} {}
 
@@ -2080,8 +2200,8 @@ template<UnsignedInt order, UnsignedInt dimensions, class T> class Bezier {
             return Implementation::BezierConverter<order, dimensions, T, U>::to(*this);
         }
 
-        Vector<dimensions, T>* data() { return _data; }
-        constexpr const Vector<dimensions, T>* data() const { return _data; }
+        auto data() -> Vector<dimensions, T>(&)[order + 1] { return _data; }
+        constexpr auto data() const -> const Vector<dimensions, T>(&)[order + 1] { return _data; }
 
         bool operator==(const Bezier<order, dimensions, T>& other) const {
             for(std::size_t i = 0; i != order + 1; ++i)
@@ -2096,13 +2216,13 @@ template<UnsignedInt order, UnsignedInt dimensions, class T> class Bezier {
         Vector<dimensions, T>& operator[](std::size_t i) { return _data[i]; }
         constexpr const Vector<dimensions, T>& operator[](std::size_t i) const { return _data[i]; }
 
-        Vector<dimensions, T> value(Float t) const {
+        Vector<dimensions, T> value(T t) const {
             Bezier<order, dimensions, T> iPoints[order + 1];
             calculateIntermediatePoints(iPoints, t);
             return iPoints[0][order];
         }
 
-        std::pair<Bezier<order, dimensions, T>, Bezier<order, dimensions, T>> subdivide(Float t) const {
+        std::pair<Bezier<order, dimensions, T>, Bezier<order, dimensions, T>> subdivide(T t) const {
             Bezier<order, dimensions, T> iPoints[order + 1];
             calculateIntermediatePoints(iPoints, t);
             Bezier<order, dimensions, T> left, right;
@@ -2114,11 +2234,11 @@ template<UnsignedInt order, UnsignedInt dimensions, class T> class Bezier {
         }
 
     private:
-        template<class U, std::size_t ...sequence> constexpr explicit Bezier(Implementation::Sequence<sequence...>, const Bezier<order, dimensions, U>& other) noexcept: _data{Vector<dimensions, T>(other._data[sequence])...} {}
+        template<class U, std::size_t ...sequence> constexpr explicit Bezier(Corrade::Containers::Implementation::Sequence<sequence...>, const Bezier<order, dimensions, U>& other) noexcept: _data{Vector<dimensions, T>(other._data[sequence])...} {}
 
-        template<class U, std::size_t ...sequence> constexpr explicit Bezier(Implementation::Sequence<sequence...>, U): _data{Vector<dimensions, T>((static_cast<void>(sequence), U{typename U::Init{}}))...} {}
+        template<class U, std::size_t ...sequence> constexpr explicit Bezier(Corrade::Containers::Implementation::Sequence<sequence...>, U): _data{Vector<dimensions, T>((static_cast<void>(sequence), U{typename U::Init{}}))...} {}
 
-        void calculateIntermediatePoints(Bezier<order, dimensions, T>(&iPoints)[order + 1], Float t) const {
+        void calculateIntermediatePoints(Bezier<order, dimensions, T>(&iPoints)[order + 1], T t) const {
             for(std::size_t i = 0; i <= order; ++i) {
                 iPoints[i][0] = _data[i];
             }
@@ -2156,24 +2276,6 @@ template<class T> using CubicBezier2D = CubicBezier<2, T>;
 template<class T> using CubicBezier3D = CubicBezier<3, T>;
 #endif
 
-namespace Implementation {
-
-template<UnsignedInt order, UnsignedInt dimensions, class T> struct StrictWeakOrdering<Bezier<order, dimensions, T>> {
-    bool operator()(const Bezier<order, dimensions, T>& a, const Bezier<order, dimensions, T>& b) const {
-        StrictWeakOrdering<Vector<dimensions, T>> o;
-        for(std::size_t i = 0; i < order + 1; ++i) {
-            if(o(a[i], b[i]))
-                return true;
-            if(o(b[i], a[i]))
-                return false;
-        }
-
-        return false;
-    }
-};
-
-}
-
 }}
 
 #endif
@@ -2184,6 +2286,23 @@ namespace Magnum { namespace Math {
 
 namespace Implementation {
     template<std::size_t, std::size_t, class, class> struct RectangularMatrixConverter;
+
+    template<std::size_t cols, std::size_t rows, std::size_t otherCols, std::size_t otherRows, class T, std::size_t col, std::size_t ...row> constexpr Vector<rows, T> valueOrZeroVector(Corrade::Containers::Implementation::Sequence<row...>, const RectangularMatrix<otherCols, otherRows, T>& other) {
+        return {(col < otherCols && row < otherRows ? other[col][row] : T{0})...};
+    }
+
+    template<std::size_t cols, std::size_t rows, std::size_t otherCols, std::size_t otherRows, class T, std::size_t col> constexpr Vector<rows, T> valueOrZeroVector(const RectangularMatrix<otherCols, otherRows, T>& other) {
+        return valueOrZeroVector<cols, rows, otherCols, otherRows, T, col>(typename Corrade::Containers::Implementation::GenerateSequence<rows>::Type{}, other);
+    }
+
+    template<std::size_t cols, std::size_t rows, std::size_t otherCols, std::size_t otherRows, class T, std::size_t col, std::size_t ...row> constexpr Vector<rows, T> valueOrIdentityVector(Corrade::Containers::Implementation::Sequence<row...>, const RectangularMatrix<otherCols, otherRows, T>& other, T value) {
+        return {(col < otherCols && row < otherRows ? other[col][row] :
+            col == row ? value : T{0})...};
+    }
+
+    template<std::size_t cols, std::size_t rows, std::size_t otherCols, std::size_t otherRows, class T, std::size_t col> constexpr Vector<rows, T> valueOrIdentityVector(const RectangularMatrix<otherCols, otherRows, T>& other, T value) {
+        return valueOrIdentityVector<cols, rows, otherCols, otherRows, T, col>(typename Corrade::Containers::Implementation::GenerateSequence<rows>::Type{}, other, value);
+    }
 }
 
 template<std::size_t cols, std::size_t rows, class T> class RectangularMatrix {
@@ -2213,33 +2332,43 @@ template<std::size_t cols, std::size_t rows, class T> class RectangularMatrix {
         }
 
         constexpr static RectangularMatrix<cols, rows, T> fromDiagonal(const Vector<DiagonalSize, T>& diagonal) noexcept {
-            return RectangularMatrix(typename Implementation::GenerateSequence<cols>::Type(), diagonal);
+            return RectangularMatrix(typename Corrade::Containers::Implementation::GenerateSequence<cols>::Type{}, diagonal);
         }
 
-        constexpr /*implicit*/ RectangularMatrix() noexcept: RectangularMatrix<cols, rows, T>{typename Implementation::GenerateSequence<cols>::Type{}, ZeroInit} {}
+        constexpr /*implicit*/ RectangularMatrix() noexcept: RectangularMatrix<cols, rows, T>{typename Corrade::Containers::Implementation::GenerateSequence<cols>::Type{}, ZeroInit} {}
 
-        constexpr explicit RectangularMatrix(ZeroInitT) noexcept: RectangularMatrix<cols, rows, T>{typename Implementation::GenerateSequence<cols>::Type{}, ZeroInit} {}
+        constexpr explicit RectangularMatrix(ZeroInitT) noexcept: RectangularMatrix<cols, rows, T>{typename Corrade::Containers::Implementation::GenerateSequence<cols>::Type{}, ZeroInit} {}
 
-        explicit RectangularMatrix(Magnum::NoInitT) noexcept: RectangularMatrix<cols, rows, T>{typename Implementation::GenerateSequence<cols>::Type{}, Magnum::NoInit} {}
+        constexpr explicit RectangularMatrix(IdentityInitT, T value = T(1)) noexcept: RectangularMatrix<cols, rows, T>{typename Corrade::Containers::Implementation::GenerateSequence<DiagonalSize>::Type{}, Vector<DiagonalSize, T>(value)} {}
+
+        explicit RectangularMatrix(Magnum::NoInitT) noexcept: RectangularMatrix<cols, rows, T>{typename Corrade::Containers::Implementation::GenerateSequence<cols>::Type{}, Magnum::NoInit} {}
 
         template<class ...U> constexpr /*implicit*/ RectangularMatrix(const Vector<rows, T>& first, const U&... next) noexcept: _data{first, next...} {
             static_assert(sizeof...(next)+1 == cols, "Improper number of arguments passed to RectangularMatrix constructor");
         }
 
-        constexpr explicit RectangularMatrix(T value) noexcept: RectangularMatrix{typename Implementation::GenerateSequence<cols>::Type(), value} {}
+        constexpr explicit RectangularMatrix(T value) noexcept: RectangularMatrix{typename Corrade::Containers::Implementation::GenerateSequence<cols>::Type{}, value} {}
 
-        template<class U> constexpr explicit RectangularMatrix(const RectangularMatrix<cols, rows, U>& other) noexcept: RectangularMatrix(typename Implementation::GenerateSequence<cols>::Type(), other) {}
+        template<class U> constexpr explicit RectangularMatrix(const RectangularMatrix<cols, rows, U>& other) noexcept: RectangularMatrix(typename Corrade::Containers::Implementation::GenerateSequence<cols>::Type{}, other) {}
+
+        template<std::size_t otherCols, std::size_t otherRows> constexpr explicit RectangularMatrix(ZeroInitT, const RectangularMatrix<otherCols, otherRows, T>& other) noexcept: RectangularMatrix<cols, rows, T>{ZeroInit, typename Corrade::Containers::Implementation::GenerateSequence<cols>::Type{}, other} {}
+
+        template<std::size_t otherCols, std::size_t otherRows> constexpr explicit RectangularMatrix(IdentityInitT, const RectangularMatrix<otherCols, otherRows, T>& other, T value = T(1)) noexcept: RectangularMatrix<cols, rows, T>{IdentityInit, typename Corrade::Containers::Implementation::GenerateSequence<cols>::Type{}, other, value} {}
+
+        template<std::size_t otherCols, std::size_t otherRows> constexpr explicit RectangularMatrix(const RectangularMatrix<otherCols, otherRows, T>& other) noexcept: RectangularMatrix<cols, rows, T>{ZeroInit, typename Corrade::Containers::Implementation::GenerateSequence<cols>::Type{}, other} {}
 
         template<class U, class V = decltype(Implementation::RectangularMatrixConverter<cols, rows, T, U>::from(std::declval<U>()))> constexpr explicit RectangularMatrix(const U& other): RectangularMatrix(Implementation::RectangularMatrixConverter<cols, rows, T, U>::from(other)) {}
-
-        constexpr /*implicit*/ RectangularMatrix(const RectangularMatrix<cols, rows, T>&) noexcept = default;
 
         template<class U, class V = decltype(Implementation::RectangularMatrixConverter<cols, rows, T, U>::to(std::declval<RectangularMatrix<cols, rows, T>>()))> constexpr explicit operator U() const {
             return Implementation::RectangularMatrixConverter<cols, rows, T, U>::to(*this);
         }
 
-        T* data() { return _data[0].data(); }
-        constexpr const T* data() const { return _data[0].data(); }
+        auto data() -> T(&)[cols*rows] {
+            return reinterpret_cast<T(&)[cols*rows]>(_data);
+        }
+        auto data() const -> const T(&)[cols*rows] {
+            return reinterpret_cast<const T(&)[cols*rows]>(_data);
+        }
 
         Vector<rows, T>& operator[](std::size_t col) { return _data[col]; }
         constexpr const Vector<rows, T>& operator[](std::size_t col) const { return _data[col]; }
@@ -2259,21 +2388,23 @@ template<std::size_t cols, std::size_t rows, class T> class RectangularMatrix {
             return !operator==(other);
         }
 
-        BoolVector<cols*rows> operator<(const RectangularMatrix<cols, rows, T>& other) const {
+        BitVector<cols*rows> operator<(const RectangularMatrix<cols, rows, T>& other) const {
             return toVector() < other.toVector();
         }
 
-        BoolVector<cols*rows> operator<=(const RectangularMatrix<cols, rows, T>& other) const {
+        BitVector<cols*rows> operator<=(const RectangularMatrix<cols, rows, T>& other) const {
             return toVector() <= other.toVector();
         }
 
-        BoolVector<cols*rows> operator>=(const RectangularMatrix<cols, rows, T>& other) const {
+        BitVector<cols*rows> operator>=(const RectangularMatrix<cols, rows, T>& other) const {
             return toVector() >= other.toVector();
         }
 
-        BoolVector<cols*rows> operator>(const RectangularMatrix<cols, rows, T>& other) const {
+        BitVector<cols*rows> operator>(const RectangularMatrix<cols, rows, T>& other) const {
             return toVector() > other.toVector();
         }
+
+        RectangularMatrix<cols, rows, T> operator+() const { return *this; }
 
         RectangularMatrix<cols, rows, T> operator-() const;
 
@@ -2330,43 +2461,46 @@ template<std::size_t cols, std::size_t rows, class T> class RectangularMatrix {
         RectangularMatrix<rows, cols, T> transposed() const;
 
         constexpr RectangularMatrix<cols, rows, T> flippedCols() const {
-            return flippedColsInternal(typename Implementation::GenerateSequence<cols>::Type{});
+            return flippedColsInternal(typename Corrade::Containers::Implementation::GenerateSequence<cols>::Type{});
         }
 
         constexpr RectangularMatrix<cols, rows, T> flippedRows() const {
-            return flippedRowsInternal(typename Implementation::GenerateSequence<cols>::Type{});
+            return flippedRowsInternal(typename Corrade::Containers::Implementation::GenerateSequence<cols>::Type{});
         }
 
         constexpr Vector<DiagonalSize, T> diagonal() const {
-            return diagonalInternal(typename Implementation::GenerateSequence<DiagonalSize>::Type());
+            return diagonalInternal(typename Corrade::Containers::Implementation::GenerateSequence<DiagonalSize>::Type{});
         }
 
         Vector<rows*cols, T> toVector() const {
             return *reinterpret_cast<const Vector<rows*cols, T>*>(data());
         }
 
-    protected:
-        template<std::size_t ...sequence> constexpr explicit RectangularMatrix(Implementation::Sequence<sequence...>, const Vector<DiagonalSize, T>& diagonal);
-
-        template<std::size_t ...sequence> constexpr explicit RectangularMatrix(Implementation::Sequence<sequence...>, T value) noexcept: _data{Vector<rows, T>((static_cast<void>(sequence), value))...} {}
-
     private:
         template<std::size_t, class> friend class Matrix;
         template<std::size_t, class> friend struct Implementation::MatrixDeterminant;
 
-        template<class U, std::size_t ...sequence> constexpr explicit RectangularMatrix(Implementation::Sequence<sequence...>, const RectangularMatrix<cols, rows, U>& matrix) noexcept: _data{Vector<rows, T>(matrix[sequence])...} {}
+        template<std::size_t ...sequence> constexpr explicit RectangularMatrix(Corrade::Containers::Implementation::Sequence<sequence...>, T value) noexcept: _data{Vector<rows, T>((static_cast<void>(sequence), value))...} {}
 
-        template<class U, std::size_t ...sequence> constexpr explicit RectangularMatrix(Implementation::Sequence<sequence...>, U) noexcept: _data{Vector<rows, T>((static_cast<void>(sequence), U{typename U::Init{}}))...} {}
+        template<std::size_t ...sequence> constexpr explicit RectangularMatrix(Corrade::Containers::Implementation::Sequence<sequence...>, const Vector<DiagonalSize, T>& diagonal);
 
-        template<std::size_t ...sequence> constexpr RectangularMatrix<cols, rows, T> flippedColsInternal(Implementation::Sequence<sequence...>) const {
+        template<class U, std::size_t ...sequence> constexpr explicit RectangularMatrix(Corrade::Containers::Implementation::Sequence<sequence...>, const RectangularMatrix<cols, rows, U>& matrix) noexcept: _data{Vector<rows, T>(matrix[sequence])...} {}
+
+        template<std::size_t otherCols, std::size_t otherRows, std::size_t ...col> constexpr explicit RectangularMatrix(ZeroInitT, Corrade::Containers::Implementation::Sequence<col...>, const RectangularMatrix<otherCols, otherRows, T>& other) noexcept: RectangularMatrix<cols, rows, T>{Implementation::valueOrZeroVector<cols, rows, otherCols, otherRows, T, col>(other)...} {}
+
+        template<std::size_t otherCols, std::size_t otherRows, std::size_t ...col> constexpr explicit RectangularMatrix(IdentityInitT, Corrade::Containers::Implementation::Sequence<col...>, const RectangularMatrix<otherCols, otherRows, T>& other, T value) noexcept: RectangularMatrix<cols, rows, T>{Implementation::valueOrIdentityVector<cols, rows, otherCols, otherRows, T, col>(other, value)...} {}
+
+        template<class U, std::size_t ...sequence> constexpr explicit RectangularMatrix(Corrade::Containers::Implementation::Sequence<sequence...>, U) noexcept: _data{Vector<rows, T>((static_cast<void>(sequence), U{typename U::Init{}}))...} {}
+
+        template<std::size_t ...sequence> constexpr RectangularMatrix<cols, rows, T> flippedColsInternal(Corrade::Containers::Implementation::Sequence<sequence...>) const {
             return {_data[cols - 1 - sequence]...};
         }
 
-        template<std::size_t ...sequence> constexpr RectangularMatrix<cols, rows, T> flippedRowsInternal(Implementation::Sequence<sequence...>) const {
+        template<std::size_t ...sequence> constexpr RectangularMatrix<cols, rows, T> flippedRowsInternal(Corrade::Containers::Implementation::Sequence<sequence...>) const {
             return {_data[sequence].flipped()...};
         }
 
-        template<std::size_t ...sequence> constexpr Vector<DiagonalSize, T> diagonalInternal(Implementation::Sequence<sequence...>) const;
+        template<std::size_t ...sequence> constexpr Vector<DiagonalSize, T> diagonalInternal(Corrade::Containers::Implementation::Sequence<sequence...>) const;
 
         Vector<rows, T> _data[cols];
 };
@@ -2429,6 +2563,9 @@ template<std::size_t size, std::size_t cols, class T> inline RectangularMatrix<c
         return Math::RectangularMatrix<cols, rows, T>::fromDiagonal(diagonal); \
     }                                                                       \
                                                                             \
+    __VA_ARGS__ operator+() const {                                         \
+        return Math::RectangularMatrix<cols, rows, T>::operator+();         \
+    }                                                                       \
     __VA_ARGS__ operator-() const {                                         \
         return Math::RectangularMatrix<cols, rows, T>::operator-();         \
     }                                                                       \
@@ -2490,15 +2627,15 @@ template<std::size_t size, std::size_t cols, class T> inline RectangularMatrix<c
     }
 
 namespace Implementation {
-    template<std::size_t rows, std::size_t i, class T, std::size_t ...sequence> constexpr Vector<rows, T> diagonalMatrixColumn2(Implementation::Sequence<sequence...>, const T& number) {
+    template<std::size_t rows, std::size_t i, class T, std::size_t ...sequence> constexpr Vector<rows, T> diagonalMatrixColumn2(Corrade::Containers::Implementation::Sequence<sequence...>, const T& number) {
         return {(sequence == i ? number : T(0))...};
     }
     template<std::size_t rows, std::size_t i, class T> constexpr Vector<rows, T> diagonalMatrixColumn(const T& number) {
-        return diagonalMatrixColumn2<rows, i, T>(typename Implementation::GenerateSequence<rows>::Type(), number);
+        return diagonalMatrixColumn2<rows, i, T>(typename Corrade::Containers::Implementation::GenerateSequence<rows>::Type{}, number);
     }
 }
 
-template<std::size_t cols, std::size_t rows, class T> template<std::size_t ...sequence> constexpr RectangularMatrix<cols, rows, T>::RectangularMatrix(Implementation::Sequence<sequence...>, const Vector<DiagonalSize, T>& diagonal): _data{Implementation::diagonalMatrixColumn<rows, sequence>(sequence < DiagonalSize ? diagonal[sequence] : T{})...} {}
+template<std::size_t cols, std::size_t rows, class T> template<std::size_t ...sequence> constexpr RectangularMatrix<cols, rows, T>::RectangularMatrix(Corrade::Containers::Implementation::Sequence<sequence...>, const Vector<DiagonalSize, T>& diagonal): _data{Implementation::diagonalMatrixColumn<rows, sequence>(sequence < DiagonalSize ? diagonal[sequence] : T{})...} {}
 
 template<std::size_t cols, std::size_t rows, class T> inline Vector<cols, T> RectangularMatrix<cols, rows, T>::row(std::size_t row) const {
     Vector<cols, T> out;
@@ -2544,26 +2681,8 @@ template<std::size_t cols, std::size_t rows, class T> inline RectangularMatrix<r
     return out;
 }
 
-template<std::size_t cols, std::size_t rows, class T> template<std::size_t ...sequence> constexpr auto RectangularMatrix<cols, rows, T>::diagonalInternal(Implementation::Sequence<sequence...>) const -> Vector<DiagonalSize, T> {
+template<std::size_t cols, std::size_t rows, class T> template<std::size_t ...sequence> constexpr auto RectangularMatrix<cols, rows, T>::diagonalInternal(Corrade::Containers::Implementation::Sequence<sequence...>) const -> Vector<DiagonalSize, T> {
     return {_data[sequence][sequence]...};
-}
-
-namespace Implementation {
-
-template<std::size_t cols, std::size_t rows, class T> struct StrictWeakOrdering<RectangularMatrix<cols, rows, T>> {
-    bool operator()(const RectangularMatrix<cols, rows, T>& a, const RectangularMatrix<cols, rows, T>& b) const {
-        StrictWeakOrdering<Vector<rows, T>> o;
-        for(std::size_t i = 0; i < cols; ++i) {
-            if(o(a[i], b[i]))
-                return true;
-            if(o(b[i], a[i]))
-                return false;
-        }
-
-        return false;
-    }
-};
-
 }
 
 }}
@@ -2576,15 +2695,6 @@ namespace Magnum { namespace Math {
 
 namespace Implementation {
     template<std::size_t, class> struct MatrixDeterminant;
-
-    template<std::size_t size, std::size_t col, std::size_t otherSize, class T, std::size_t ...row> constexpr Vector<size, T> valueOrIdentityVector(Sequence<row...>, const RectangularMatrix<otherSize, otherSize, T>& other) {
-        return {(col < otherSize && row < otherSize ? other[col][row] :
-            col == row ? T{1} : T{0})...};
-    }
-
-    template<std::size_t size, std::size_t col, std::size_t otherSize, class T> constexpr Vector<size, T> valueOrIdentityVector(const RectangularMatrix<otherSize, otherSize, T>& other) {
-        return valueOrIdentityVector<size, col>(typename Implementation::GenerateSequence<size>::Type(), other);
-    }
 }
 
 template<std::size_t size, class T> class Matrix: public RectangularMatrix<size, size, T> {
@@ -2593,9 +2703,9 @@ template<std::size_t size, class T> class Matrix: public RectangularMatrix<size,
             Size = size
         };
 
-        constexpr /*implicit*/ Matrix() noexcept: RectangularMatrix<size, size, T>{typename Implementation::GenerateSequence<size>::Type(), Vector<size, T>(T(1))} {}
+        constexpr /*implicit*/ Matrix() noexcept: RectangularMatrix<size, size, T>{typename Corrade::Containers::Implementation::GenerateSequence<size>::Type{}, Vector<size, T>(T(1))} {}
 
-        constexpr explicit Matrix(IdentityInitT, T value = T(1)) noexcept: RectangularMatrix<size, size, T>{typename Implementation::GenerateSequence<size>::Type(), Vector<size, T>(value)} {}
+        constexpr explicit Matrix(IdentityInitT, T value = T(1)) noexcept: RectangularMatrix<size, size, T>{IdentityInit, value} {}
 
         constexpr explicit Matrix(ZeroInitT) noexcept: RectangularMatrix<size, size, T>{ZeroInit} {}
 
@@ -2603,13 +2713,17 @@ template<std::size_t size, class T> class Matrix: public RectangularMatrix<size,
 
         template<class ...U> constexpr /*implicit*/ Matrix(const Vector<size, T>& first, const U&... next) noexcept: RectangularMatrix<size, size, T>(first, next...) {}
 
-        constexpr explicit Matrix(T value) noexcept: RectangularMatrix<size, size, T>{typename Implementation::GenerateSequence<size>::Type(), value} {}
+        constexpr explicit Matrix(T value) noexcept: RectangularMatrix<size, size, T>{value} {}
 
         template<class U> constexpr explicit Matrix(const RectangularMatrix<size, size, U>& other) noexcept: RectangularMatrix<size, size, T>(other) {}
 
         template<class U, class V = decltype(Implementation::RectangularMatrixConverter<size, size, T, U>::from(std::declval<U>()))> constexpr explicit Matrix(const U& other): RectangularMatrix<size, size, T>(Implementation::RectangularMatrixConverter<size, size, T, U>::from(other)) {}
 
-        template<std::size_t otherSize> constexpr explicit Matrix(const RectangularMatrix<otherSize, otherSize, T>& other) noexcept: Matrix<size, T>{typename Implementation::GenerateSequence<size>::Type(), other} {}
+        template<std::size_t otherCols, std::size_t otherRows> constexpr explicit Matrix(IdentityInitT, const RectangularMatrix<otherCols, otherRows, T>& other, T value = T(1)) noexcept: RectangularMatrix<size, size, T>{IdentityInit, other, value} {}
+
+        template<std::size_t otherCols, std::size_t otherRows> constexpr explicit Matrix(ZeroInitT, const RectangularMatrix<otherCols, otherRows, T>& other) noexcept: RectangularMatrix<size, size, T>{ZeroInit, other} {}
+
+        template<std::size_t otherCols, std::size_t otherRows> constexpr explicit Matrix(const RectangularMatrix<otherCols, otherRows, T>& other, T value = T(1)) noexcept: RectangularMatrix<size, size, T>{IdentityInit, other, value} {}
 
         constexpr /*implicit*/ Matrix(const RectangularMatrix<size, size, T>& other) noexcept: RectangularMatrix<size, size, T>(other) {}
 
@@ -2630,7 +2744,7 @@ template<std::size_t size, class T> class Matrix: public RectangularMatrix<size,
         Matrix<size, T> inverted() const;
 
         Matrix<size, T> invertedOrthogonal() const {
-            CORRADE_ASSERT(isOrthogonal(),
+            CORRADE_DEBUG_ASSERT(isOrthogonal(),
                 "Math::Matrix::invertedOrthogonal(): the matrix is not orthogonal:" << Corrade::Utility::Debug::Debug::newline << *this, {});
             return RectangularMatrix<size, size, T>::transposed();
         }
@@ -2651,8 +2765,6 @@ template<std::size_t size, class T> class Matrix: public RectangularMatrix<size,
 
     private:
         friend struct Implementation::MatrixDeterminant<size, T>;
-
-        template<std::size_t otherSize, std::size_t ...col> constexpr explicit Matrix(Implementation::Sequence<col...>, const RectangularMatrix<otherSize, otherSize, T>& other) noexcept: RectangularMatrix<size, size, T>{Implementation::valueOrIdentityVector<size, col>(other)...} {}
 };
 
 #ifndef CORRADE_MSVC2015_COMPATIBILITY /* Multiple definitions still broken */
@@ -2757,8 +2869,6 @@ template<class T> struct MatrixDeterminant<1, T> {
     }
 };
 
-template<std::size_t size, class T> struct StrictWeakOrdering<Matrix<size, T>>: StrictWeakOrdering<RectangularMatrix<size, size, T>> {};
-
 }
 
 template<std::size_t size, class T> bool Matrix<size, T>::isOrthogonal() const {
@@ -2836,9 +2946,9 @@ namespace Implementation {
         template<class T> constexpr static T pow(T) { return T(1); }
     };
 
-    template<class> struct IsBoolVectorOrScalar: std::false_type {};
-    template<> struct IsBoolVectorOrScalar<bool>: std::true_type {};
-    template<std::size_t size> struct IsBoolVectorOrScalar<BoolVector<size>>: std::true_type {};
+    template<class> struct IsBitVectorOrScalar: std::false_type {};
+    template<> struct IsBitVectorOrScalar<bool>: std::true_type {};
+    template<std::size_t size> struct IsBitVectorOrScalar<BitVector<size>>: std::true_type {};
 }
 
 template<class Integral> inline std::pair<Integral, Integral> div(Integral x, Integral y) {
@@ -2848,13 +2958,31 @@ template<class Integral> inline std::pair<Integral, Integral> div(Integral x, In
     return {result.quot, result.rem};
 }
 
+UnsignedLong MAGNUM_EXPORT binomialCoefficient(UnsignedInt n, UnsignedInt k);
+
+#if defined(CORRADE_TARGET_GCC) || defined(CORRADE_TARGET_CLANG)
+inline UnsignedInt popcount(UnsignedInt number) {
+    return __builtin_popcount(number);
+}
+#else
+MAGNUM_EXPORT UnsignedInt popcount(UnsignedInt number);
+#endif
+
+#if defined(CORRADE_TARGET_GCC) || defined(CORRADE_TARGET_CLANG)
+inline UnsignedInt popcount(UnsignedLong number) {
+    return __builtin_popcountll(number);
+}
+#else
+MAGNUM_EXPORT UnsignedInt popcount(UnsignedLong number);
+#endif
+
 template<class T> inline T sin(Unit<Rad, T> angle) { return std::sin(T(angle)); }
 template<class T> inline T sin(Unit<Deg, T> angle) { return sin(Rad<T>(angle)); }
 
 template<class T> inline T cos(Unit<Rad, T> angle) { return std::cos(T(angle)); }
 template<class T> inline T cos(Unit<Deg, T> angle) { return cos(Rad<T>(angle)); }
 
-#if defined(__GNUC__) && !defined(__clang__)
+#if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG)
 namespace Implementation {
     inline void sincos(Float rad, Float& sin, Float& cos) {
         __builtin_sincosf(rad, &sin, &cos);
@@ -2869,7 +2997,7 @@ namespace Implementation {
 #endif
 
 template<class T> inline std::pair<T, T> sincos(Unit<Rad, T> angle) {
-    #if defined(__GNUC__) && !defined(__clang__)
+    #if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG)
     std::pair<T, T> out;
     Implementation::sincos(T(angle), out.first, out.second);
     return out;
@@ -2892,19 +3020,19 @@ template<class T> inline typename std::enable_if<IsScalar<T>::value, bool>::type
     return std::isinf(UnderlyingTypeOf<T>(value));
 }
 
-template<std::size_t size, class T> inline BoolVector<size> isInf(const Vector<size, T>& value) {
-    BoolVector<size> out;
+template<std::size_t size, class T> inline BitVector<size> isInf(const Vector<size, T>& value) {
+    BitVector<size> out;
     for(std::size_t i = 0; i != size; ++i)
-        out.set(i, Math::isInf(value[i]));
+        if(Math::isInf(value[i])) out.set(i);
     return out;
 }
 
 template<class T> typename std::enable_if<IsScalar<T>::value, bool>::type isNan(T value);
 
-template<std::size_t size, class T> inline BoolVector<size> isNan(const Vector<size, T>& value) {
-    BoolVector<size> out;
+template<std::size_t size, class T> inline BitVector<size> isNan(const Vector<size, T>& value) {
+    BitVector<size> out;
     for(std::size_t i = 0; i != size; ++i)
-        out.set(i, Math::isNan(value[i]));
+        if(Math::isNan(value[i])) out.set(i);
     return out;
 }
 
@@ -2968,7 +3096,7 @@ template<std::size_t size, class T> inline Vector<size, T> clamp(const Vector<si
     return out;
 }
 
-template<class T> inline typename std::enable_if<IsScalar<T>::value, T>::type sign(const T& scalar) {
+template<class T> inline typename std::enable_if<IsScalar<T>::value, T>::type sign(T scalar) {
     if(scalar > T(0)) return T(1);
     if(scalar < T(0)) return T(-1);
     return T(0);
@@ -3025,8 +3153,19 @@ template<std::size_t size, class T> inline Vector<size, T> ceil(const Vector<siz
     return out;
 }
 
+template<class T> inline typename std::enable_if<IsScalar<T>::value, T>::type fmod(T a, T b) {
+    return T(std::fmod(UnderlyingTypeOf<T>(a), UnderlyingTypeOf<T>(b)));
+}
+
+template<std::size_t size, class T> inline Vector<size, T> fmod(const Vector<size, T>& a, const Vector<size, T>& b) {
+    Vector<size, T> out{Magnum::NoInit};
+    for(std::size_t i = 0; i != size; ++i)
+        out[i] = Math::fmod(a[i], b[i]);
+    return out;
+}
+
 template<class T, class U> inline
-    typename std::enable_if<(IsVector<T>::value || IsScalar<T>::value) && !Implementation::IsBoolVectorOrScalar<U>::value, T>::type
+    typename std::enable_if<(IsVector<T>::value || IsScalar<T>::value) && !Implementation::IsBitVectorOrScalar<U>::value, T>::type
 lerp(const T& a, const T& b, U t) {
     return Implementation::lerp(a, b, t);
 }
@@ -3035,15 +3174,15 @@ template<class T> inline T lerp(const T& a, const T& b, bool t) {
     return t ? b : a;
 }
 
-template<std::size_t size, class T> inline Vector<size, T> lerp(const Vector<size, T>& a, const Vector<size, T>& b, const BoolVector<size>& t) {
+template<std::size_t size, class T> inline Vector<size, T> lerp(const Vector<size, T>& a, const Vector<size, T>& b, const BitVector<size>& t) {
     Vector<size, T> out{Magnum::NoInit};
     for(std::size_t i = 0; i != size; ++i)
         out[i] = t[i] ? b[i] : a[i];
     return out;
 }
 
-template<std::size_t size> inline BoolVector<size> lerp(const BoolVector<size>& a, const BoolVector<size>& b, const BoolVector<size>& t) {
-    BoolVector<size> out;
+template<std::size_t size> inline BitVector<size> lerp(const BitVector<size>& a, const BitVector<size>& b, const BitVector<size>& t) {
+    BitVector<size> out;
     for(std::size_t i = 0; i != size; ++i)
         out.set(i, t[i] ? b[i] : a[i]);
     return out;
@@ -3129,13 +3268,13 @@ template<std::size_t size, class T> inline Vector<size, T> sqrtInverted(const Ve
 }
 
 template<std::size_t size, class T> inline Vector<size, T> reflect(const Vector<size, T>& vector, const Vector<size, T>& normal) {
-    CORRADE_ASSERT(normal.isNormalized(),
+    CORRADE_DEBUG_ASSERT(normal.isNormalized(),
         "Math::reflect(): normal" << normal << "is not normalized", {});
     return vector - T(2.0)*dot(vector, normal)*normal;
 }
 
 template<std::size_t size, class T> inline Vector<size, T> refract(const Vector<size, T>& vector, const Vector<size, T>& normal, T eta) {
-    CORRADE_ASSERT(vector.isNormalized() && normal.isNormalized(),
+    CORRADE_DEBUG_ASSERT(vector.isNormalized() && normal.isNormalized(),
         "Math::refract(): vectors" << vector << "and" << normal << "are not normalized", {});
     const T dot = Math::dot(vector, normal);
     const T k  = T(1.0) - eta*eta*(T(1.0) - dot*dot);
@@ -3277,8 +3416,15 @@ template<class T> class Vector2: public Vector<2, T> {
 
         T& x() { return Vector<2, T>::_data[0]; }
         constexpr T x() const { return Vector<2, T>::_data[0]; }
+
         T& y() { return Vector<2, T>::_data[1]; }
         constexpr T y() const { return Vector<2, T>::_data[1]; }
+
+        T& r() { return Vector<2, T>::_data[0]; }
+        constexpr T r() const { return Vector<2, T>::_data[0]; }
+
+        T& g() { return Vector<2, T>::_data[1]; }
+        constexpr T g() const { return Vector<2, T>::_data[1]; }
 
         template<class U = T> typename std::enable_if<std::is_signed<U>::value, Vector2<T>>::type
         perpendicular() const { return {-y(), x()}; }
@@ -3297,8 +3443,6 @@ MAGNUM_VECTORn_OPERATOR_IMPLEMENTATION(2, Vector2)
 namespace Implementation {
     template<std::size_t, class> struct TypeForSize;
     template<class T> struct TypeForSize<2, T> { typedef Math::Vector2<typename T::Type> Type; };
-
-    template<class T> struct StrictWeakOrdering<Vector2<T>>: StrictWeakOrdering<Vector<2, T>> {};
 }
 
 }}
@@ -3379,6 +3523,11 @@ template<class T> class Vector3: public Vector<3, T> {
             return {Vector<3, T>::_data[0], Vector<3, T>::_data[1]};
         }
 
+        Vector2<T>& rg() { return Vector2<T>::from(Vector<3, T>::data()); }
+        constexpr const Vector2<T> rg() const {
+            return {Vector<3, T>::_data[0], Vector<3, T>::_data[1]};
+        }
+
         MAGNUM_VECTOR_SUBCLASS_IMPLEMENTATION(3, Vector3)
 
     private:
@@ -3386,12 +3535,6 @@ template<class T> class Vector3: public Vector<3, T> {
 };
 
 MAGNUM_VECTORn_OPERATOR_IMPLEMENTATION(3, Vector3)
-
-namespace Implementation {
-    template<class T> struct TypeForSize<3, T> { typedef Math::Vector3<typename T::Type> Type; };
-
-    template<class T> struct StrictWeakOrdering<Vector3<T>>: StrictWeakOrdering<Vector<3, T>> {};
-}
 
 }}
 
@@ -3467,6 +3610,11 @@ template<class T> class Vector4: public Vector<4, T> {
             return {Vector<4, T>::_data[0], Vector<4, T>::_data[1]};
         }
 
+        Vector2<T>& rg() { return Vector2<T>::from(Vector<4, T>::data()); }
+        constexpr const Vector2<T> rg() const {
+            return {Vector<4, T>::_data[0], Vector<4, T>::_data[1]};
+        }
+
         MAGNUM_VECTOR_SUBCLASS_IMPLEMENTATION(4, Vector4)
 };
 
@@ -3480,12 +3628,6 @@ template<class T> Vector4<T> planeEquation(const Vector3<T>& normal, const Vecto
 }
 
 MAGNUM_VECTORn_OPERATOR_IMPLEMENTATION(4, Vector4)
-
-namespace Implementation {
-    template<class T> struct TypeForSize<4, T> { typedef Math::Vector4<typename T::Type> Type; };
-
-    template<class T> struct StrictWeakOrdering<Vector4<T>>: StrictWeakOrdering<Vector<4, T>> {};
-}
 
 }}
 
@@ -3544,16 +3686,6 @@ inline Half operator "" _h(long double value) { return Half(Float(value)); }
 
 }
 
-namespace Implementation {
-
-template<> struct StrictWeakOrdering<Half> {
-    bool operator()(Half a, Half b) const {
-        return a.data() < b.data();
-    }
-};
-
-}
-
 }}
 
 #endif
@@ -3582,7 +3714,7 @@ template<class T> typename std::enable_if<IsFloatingPoint<T>::value, Color3<T>>:
         case 3: return {p, q, hsv.value};
         case 4: return {t, p, hsv.value};
         case 5: return {hsv.value, p, q};
-        default: CORRADE_INTERNAL_ASSERT_UNREACHABLE();
+        default: CORRADE_INTERNAL_DEBUG_ASSERT_UNREACHABLE();
     }
 }
 template<class T> inline typename std::enable_if<IsIntegral<T>::value, Color3<T>>::type fromHsv(const ColorHsv<typename TypeTraits<T>::FloatingPointType>& hsv) {
@@ -3661,6 +3793,29 @@ template<class T, class Integral> inline Color4<T> fromSrgbAlphaIntegral(const V
     return fromSrgbAlpha<T>(unpack<Vector4<typename Color4<T>::FloatingPointType>>(srgbAlpha));
 }
 
+template<class T> inline typename std::enable_if<IsFloatingPoint<T>::value, Color3<T>>::type fromLinearRgbInt(UnsignedInt linear) {
+    return {unpack<T>(UnsignedByte(linear >> 16)),
+            unpack<T>(UnsignedByte(linear >> 8)),
+            unpack<T>(UnsignedByte(linear))};
+}
+template<class T> inline typename std::enable_if<IsFloatingPoint<T>::value, Color4<T>>::type fromLinearRgbaInt(UnsignedInt linear) {
+    return {unpack<T>(UnsignedByte(linear >> 24)),
+            unpack<T>(UnsignedByte(linear >> 16)),
+            unpack<T>(UnsignedByte(linear >> 8)),
+            unpack<T>(UnsignedByte(linear))};
+}
+template<class T> inline typename std::enable_if<IsIntegral<T>::value, Color3<T>>::type fromLinearRgbInt(UnsignedInt linear) {
+    return {pack<T>(unpack<Float>(UnsignedByte(linear >> 16))),
+            pack<T>(unpack<Float>(UnsignedByte(linear >> 8))),
+            pack<T>(unpack<Float>(UnsignedByte(linear)))};
+}
+template<class T> inline typename std::enable_if<IsIntegral<T>::value, Color4<T>>::type fromLinearRgbaInt(UnsignedInt linear) {
+    return {pack<T>(unpack<Float>(UnsignedByte(linear >> 24))),
+            pack<T>(unpack<Float>(UnsignedByte(linear >> 16))),
+            pack<T>(unpack<Float>(UnsignedByte(linear >> 8))),
+            pack<T>(unpack<Float>(UnsignedByte(linear)))};
+}
+
 template<class T> Vector3<typename Color3<T>::FloatingPointType> toSrgb(typename std::enable_if<IsFloatingPoint<T>::value, const Color3<T>&>::type rgb) {
     constexpr const T a = T(0.055);
     return lerp(rgb*T(12.92), (T(1.0) + a)*pow(rgb, T(1.0)/T(2.4)) - Vector3<T>{a}, rgb > Vector3<T>(T(0.0031308)));
@@ -3681,6 +3836,29 @@ template<class T, class Integral> inline Vector3<Integral> toSrgbIntegral(const 
 template<class T, class Integral> inline Vector4<Integral> toSrgbAlphaIntegral(const Color4<T>& rgba) {
     static_assert(IsIntegral<Integral>::value, "only conversion from different integral type is supported");
     return pack<Vector4<Integral>>(toSrgbAlpha<T>(rgba));
+}
+
+template<class T> inline typename std::enable_if<IsFloatingPoint<T>::value, UnsignedInt>::type toLinearRgbInt(const Color3<T>& linear) {
+    return (pack<UnsignedByte>(linear[0]) << 16) |
+           (pack<UnsignedByte>(linear[1]) << 8) |
+            pack<UnsignedByte>(linear[2]);
+}
+template<class T> inline typename std::enable_if<IsFloatingPoint<T>::value, UnsignedInt>::type toLinearRgbaInt(const Color4<T>& linear) {
+    return (pack<UnsignedByte>(linear[0]) << 24) |
+           (pack<UnsignedByte>(linear[1]) << 16) |
+           (pack<UnsignedByte>(linear[2]) << 8) |
+            pack<UnsignedByte>(linear[3]);
+}
+template<class T> inline typename std::enable_if<IsIntegral<T>::value, UnsignedInt>::type toLinearRgbInt(const Color3<T>& linear) {
+    return (pack<UnsignedByte>(unpack<Float>(linear[0])) << 16) |
+           (pack<UnsignedByte>(unpack<Float>(linear[1])) << 8) |
+            pack<UnsignedByte>(unpack<Float>(linear[2]));
+}
+template<class T> inline typename std::enable_if<IsIntegral<T>::value, UnsignedInt>::type toLinearRgbaInt(const Color4<T>& linear) {
+    return (pack<UnsignedByte>(unpack<Float>(linear[0])) << 24) |
+           (pack<UnsignedByte>(unpack<Float>(linear[1])) << 16) |
+           (pack<UnsignedByte>(unpack<Float>(linear[2])) << 8) |
+            pack<UnsignedByte>(unpack<Float>(linear[3]));
 }
 
 template<class T> typename std::enable_if<IsFloatingPoint<T>::value, Color3<T>>::type fromXyz(const Vector3<T>& xyz) {
@@ -3762,10 +3940,14 @@ template<class T> class Color3: public Vector3<T> {
             return Implementation::fromSrgbIntegral<T, Integral>(srgb);
         }
 
-        static Color3<T> fromSrgb(UnsignedInt srgb) {
+        static Color3<T> fromSrgbInt(UnsignedInt srgb) {
             return fromSrgb<UnsignedByte>({UnsignedByte(srgb >> 16),
                                            UnsignedByte(srgb >> 8),
                                            UnsignedByte(srgb)});
+        }
+
+        static Color3<T> fromLinearRgbInt(UnsignedInt linear) {
+            return Implementation::fromLinearRgbInt<T>(linear);
         }
 
         static Color3<T> fromXyz(const Vector3<FloatingPointType>& xyz) {
@@ -3781,6 +3963,8 @@ template<class T> class Color3: public Vector3<T> {
         constexpr explicit Color3(T rgb) noexcept: Vector3<T>(rgb) {}
 
         constexpr /*implicit*/ Color3(T r, T g, T b) noexcept: Vector3<T>(r, g, b) {}
+
+        constexpr /*implicit*/ Color3(const Vector<2, T>& rg, T b) noexcept: Vector3<T>{rg, b} {}
 
         template<class U> constexpr explicit Color3(const Vector<3, U>& other) noexcept: Vector3<T>(other) {}
 
@@ -3822,6 +4006,10 @@ template<class T> class Color3: public Vector3<T> {
         UnsignedInt toSrgbInt() const {
             const auto srgb = toSrgb<UnsignedByte>();
             return (srgb[0] << 16) | (srgb[1] << 8) | srgb[2];
+        }
+
+        UnsignedInt toLinearRgbInt() const {
+            return Implementation::toLinearRgbInt(*this);
         }
 
         Vector3<FloatingPointType> toXyz() const {
@@ -3870,29 +4058,37 @@ class Color4: public Vector4<T> {
             return {Implementation::fromSrgbAlpha<T>(srgbAlpha)};
         }
 
-        static Color4<T> fromSrgb(const Vector3<FloatingPointType>& srgb, T a = Implementation::fullChannel<T>()) {
-            return {Implementation::fromSrgb<T>(srgb), a};
-        }
-
         template<class Integral> static Color4<T> fromSrgbAlpha(const Vector4<Integral>& srgbAlpha) {
             return {Implementation::fromSrgbAlphaIntegral<T, Integral>(srgbAlpha)};
+        }
+
+        static Color4<T> fromSrgb(const Vector3<FloatingPointType>& srgb, T a = Implementation::fullChannel<T>()) {
+            return {Implementation::fromSrgb<T>(srgb), a};
         }
 
         template<class Integral> static Color4<T> fromSrgb(const Vector3<Integral>& srgb, T a = Implementation::fullChannel<T>()) {
             return {Implementation::fromSrgbIntegral<T, Integral>(srgb), a};
         }
 
-        static Color4<T> fromSrgbAlpha(UnsignedInt srgbAlpha) {
+        static Color4<T> fromSrgbAlphaInt(UnsignedInt srgbAlpha) {
             return fromSrgbAlpha<UnsignedByte>({UnsignedByte(srgbAlpha >> 24),
                                                 UnsignedByte(srgbAlpha >> 16),
                                                 UnsignedByte(srgbAlpha >> 8),
                                                 UnsignedByte(srgbAlpha)});
         }
 
-        static Color4<T> fromSrgb(UnsignedInt srgb, T a = Implementation::fullChannel<T>()) {
+        static Color4<T> fromSrgbInt(UnsignedInt srgb, T a = Implementation::fullChannel<T>()) {
             return fromSrgb<UnsignedByte>({UnsignedByte(srgb >> 16),
                                            UnsignedByte(srgb >> 8),
                                            UnsignedByte(srgb)}, a);
+        }
+
+        static Color4<T> fromLinearRgbaInt(UnsignedInt linear) {
+            return Implementation::fromLinearRgbaInt<T>(linear);
+        }
+
+        static Color4<T> fromLinearRgbInt(UnsignedInt linear, T a = Implementation::fullChannel<T>()) {
+            return {Implementation::fromLinearRgbInt<T>(linear), a};
         }
 
         static Color4<T> fromXyz(const Vector3<FloatingPointType> xyz, T a = Implementation::fullChannel<T>()) {
@@ -3951,6 +4147,10 @@ class Color4: public Vector4<T> {
         UnsignedInt toSrgbAlphaInt() const {
             const auto srgbAlpha = toSrgbAlpha<UnsignedByte>();
             return (srgbAlpha[0] << 24) | (srgbAlpha[1] << 16) | (srgbAlpha[2] << 8) | srgbAlpha[3];
+        }
+
+        UnsignedInt toLinearRgbaInt() const {
+            return Implementation::toLinearRgbaInt(*this);
         }
 
         Vector3<FloatingPointType> toXyz() const {
@@ -4027,7 +4227,7 @@ inline Color3<Float> operator "" _rgbf(unsigned long long value) {
 }
 
 inline Color3<Float> operator "" _srgbf(unsigned long long value) {
-    return Color3<Float>::fromSrgb(UnsignedInt(value));
+    return Color3<Float>::fromSrgbInt(UnsignedInt(value));
 }
 
 inline Color4<Float> operator "" _rgbaf(unsigned long long value) {
@@ -4035,7 +4235,7 @@ inline Color4<Float> operator "" _rgbaf(unsigned long long value) {
 }
 
 inline Color4<Float> operator "" _srgbaf(unsigned long long value) {
-    return Color4<Float>::fromSrgbAlpha(UnsignedInt(value));
+    return Color4<Float>::fromSrgbAlphaInt(UnsignedInt(value));
 }
 
 }
@@ -4045,14 +4245,7 @@ namespace Implementation {
     template<class T> struct TypeForSize<3, Color4<T>> { typedef Color3<T> Type; };
     template<class T> struct TypeForSize<4, Color3<T>> { typedef Color4<T> Type; };
     template<class T> struct TypeForSize<4, Color4<T>> { typedef Color4<T> Type; };
-
-    template<class T> struct StrictWeakOrdering<Color3<T>>: StrictWeakOrdering<Vector<3, T>> {};
-    template<class T> struct StrictWeakOrdering<Color4<T>>: StrictWeakOrdering<Vector<4, T>> {};
 }
-
-}}
-
-namespace Corrade { namespace Utility {
 
 }}
 
@@ -4075,7 +4268,7 @@ template<class T> inline T dot(const Complex<T>& a, const Complex<T>& b) {
 }
 
 template<class T> inline Rad<T> angle(const Complex<T>& normalizedA, const Complex<T>& normalizedB) {
-    CORRADE_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
+    CORRADE_DEBUG_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
         "Math::angle(): complex numbers" << normalizedA << "and" << normalizedB << "are not normalized", {});
     return Rad<T>(std::acos(clamp(dot(normalizedA, normalizedB), T(-1), T(1))));
 }
@@ -4088,11 +4281,7 @@ template<class T> class Complex {
             return {std::cos(T(angle)), std::sin(T(angle))};
         }
 
-        static Complex<T> fromMatrix(const Matrix2x2<T>& matrix) {
-            CORRADE_ASSERT(matrix.isOrthogonal(),
-                "Math::Complex::fromMatrix(): the matrix is not orthogonal:" << Corrade::Utility::Debug::newline << matrix, {});
-            return Implementation::complexFromMatrix(matrix);
-        }
+        static Complex<T> fromMatrix(const Matrix2x2<T>& matrix);
 
         constexpr /*implicit*/ Complex() noexcept: _real(T(1)), _imaginary(T(0)) {}
 
@@ -4110,14 +4299,16 @@ template<class T> class Complex {
 
         template<class U, class V = decltype(Implementation::ComplexConverter<T, U>::from(std::declval<U>()))> constexpr explicit Complex(const U& other): Complex{Implementation::ComplexConverter<T, U>::from(other)} {}
 
-        constexpr /*implicit*/ Complex(const Complex<T>&) noexcept = default;
-
         template<class U, class V = decltype(Implementation::ComplexConverter<T, U>::to(std::declval<Complex<T>>()))> constexpr explicit operator U() const {
             return Implementation::ComplexConverter<T, U>::to(*this);
         }
 
-        T* data() { return &_real; }
-        constexpr const T* data() const { return &_real; }
+        auto data() -> T(&)[2] {
+            return reinterpret_cast<T(&)[2]>(_real);
+        }
+        auto data() const -> const T(&)[2] {
+            return reinterpret_cast<const T(&)[2]>(_real);
+        }
 
         bool operator==(const Complex<T>& other) const {
             return TypeTraits<T>::equals(_real, other._real) &&
@@ -4150,6 +4341,8 @@ template<class T> class Complex {
             return {Vector<2, T>(_real, _imaginary),
                     Vector<2, T>(-_imaginary, _real)};
         }
+
+        Complex<T> operator+() const { return *this; }
 
         Complex<T>& operator+=(const Complex<T>& other) {
             _real += other._real;
@@ -4237,7 +4430,7 @@ template<class T> class Complex {
         }
 
         Complex<T> invertedNormalized() const {
-            CORRADE_ASSERT(isNormalized(),
+            CORRADE_DEBUG_ASSERT(isNormalized(),
                 "Math::Complex::invertedNormalized():" << *this << "is not normalized", {});
             return conjugated();
         }
@@ -4269,13 +4462,13 @@ template<class T> inline Complex<T> operator/(const Vector2<T>& vector, const Co
 }
 
 template<class T> inline Complex<T> lerp(const Complex<T>& normalizedA, const Complex<T>& normalizedB, T t) {
-    CORRADE_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
+    CORRADE_DEBUG_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
         "Math::lerp(): complex numbers" << normalizedA << "and" << normalizedB << "are not normalized", {});
     return ((T(1) - t)*normalizedA + t*normalizedB).normalized();
 }
 
 template<class T> inline Complex<T> slerp(const Complex<T>& normalizedA, const Complex<T>& normalizedB, T t) {
-    CORRADE_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
+    CORRADE_DEBUG_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
         "Math::slerp(): complex numbers" << normalizedA << "and" << normalizedB << "are not normalized", {});
     const T cosAngle = dot(normalizedA, normalizedB);
 
@@ -4285,19 +4478,10 @@ template<class T> inline Complex<T> slerp(const Complex<T>& normalizedA, const C
     return (std::sin((T(1) - t)*a)*normalizedA + std::sin(t*a)*normalizedB)/std::sin(a);
 }
 
-namespace Implementation {
-
-template<class T> struct StrictWeakOrdering<Complex<T>> {
-    bool operator()(const Complex<T>& a, const Complex<T>& b) const {
-        if(a.real() < b.real())
-            return true;
-        if(a.real() > b.real())
-            return false;
-
-        return a.imaginary() < b.imaginary();
-    }
-};
-
+template<class T> inline Complex<T> Complex<T>::fromMatrix(const Matrix2x2<T>& matrix) {
+    CORRADE_DEBUG_ASSERT(std::abs(matrix.determinant() - T(1)) < T(2)*TypeTraits<T>::epsilon(),
+        "Math::Complex::fromMatrix(): the matrix is not a rotation:" << Corrade::Utility::Debug::newline << matrix, {});
+    return Implementation::complexFromMatrix(matrix);
 }
 
 }}
@@ -4316,14 +4500,14 @@ template<class T> inline T dot(const Quaternion<T>& a, const Quaternion<T>& b) {
     return dot(a.vector(), b.vector()) + a.scalar()*b.scalar();
 }
 
-template<class T> inline Rad<T> angle(const Quaternion<T>& normalizedA, const Quaternion<T>& normalizedB) {
-    CORRADE_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
-        "Math::angle(): quaternions" << normalizedA << "and" << normalizedB << "are not normalized", {});
+template<class T> inline Rad<T> halfAngle(const Quaternion<T>& normalizedA, const Quaternion<T>& normalizedB) {
+    CORRADE_DEBUG_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
+        "Math::halfAngle(): quaternions" << normalizedA << "and" << normalizedB << "are not normalized", {});
     return Rad<T>{std::acos(clamp(dot(normalizedA, normalizedB), T(-1), T(1)))};
 }
 
 template<class T> inline Quaternion<T> lerp(const Quaternion<T>& normalizedA, const Quaternion<T>& normalizedB, T t) {
-    CORRADE_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
+    CORRADE_DEBUG_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
         "Math::lerp(): quaternions" << normalizedA << "and" << normalizedB << "are not normalized", {});
     return ((T(1) - t)*normalizedA + t*normalizedB).normalized();
 }
@@ -4333,7 +4517,7 @@ template<class T> inline Quaternion<T> lerpShortestPath(const Quaternion<T>& nor
 }
 
 template<class T> inline Quaternion<T> slerp(const Quaternion<T>& normalizedA, const Quaternion<T>& normalizedB, T t) {
-    CORRADE_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
+    CORRADE_DEBUG_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
         "Math::slerp(): quaternions" << normalizedA << "and" << normalizedB << "are not normalized", {});
     const T cosHalfAngle = dot(normalizedA, normalizedB);
 
@@ -4347,7 +4531,7 @@ template<class T> inline Quaternion<T> slerp(const Quaternion<T>& normalizedA, c
 }
 
 template<class T> inline Quaternion<T> slerpShortestPath(const Quaternion<T>& normalizedA, const Quaternion<T>& normalizedB, T t) {
-    CORRADE_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
+    CORRADE_DEBUG_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
         "Math::slerpShortestPath(): quaternions" << normalizedA << "and" << normalizedB << "are not normalized", {});
     const T cosHalfAngle = dot(normalizedA, normalizedB);
 
@@ -4367,6 +4551,8 @@ template<class T> class Quaternion {
 
         static Quaternion<T> rotation(Rad<T> angle, const Vector3<T>& normalizedAxis);
 
+        static Quaternion<T> reflection(const Vector3<T>& normal);
+
         static Quaternion<T> fromMatrix(const Matrix3x3<T>& matrix);
 
         constexpr /*implicit*/ Quaternion() noexcept: _scalar{T(1)} {}
@@ -4385,14 +4571,16 @@ template<class T> class Quaternion {
 
         template<class U, class V = decltype(Implementation::QuaternionConverter<T, U>::from(std::declval<U>()))> constexpr explicit Quaternion(const U& other): Quaternion{Implementation::QuaternionConverter<T, U>::from(other)} {}
 
-        constexpr /*implicit*/ Quaternion(const Quaternion<T>&) noexcept = default;
-
         template<class U, class V = decltype(Implementation::QuaternionConverter<T, U>::to(std::declval<Quaternion<T>>()))> constexpr explicit operator U() const {
             return Implementation::QuaternionConverter<T, U>::to(*this);
         }
 
-        T* data() { return _vector.data(); }
-        constexpr const T* data() const { return _vector.data(); }
+        auto data() -> T(&)[4] {
+            return reinterpret_cast<T(&)[4]>(_vector);
+        }
+        auto data() const -> const T(&)[4] {
+            return reinterpret_cast<const T(&)[4]>(_vector);
+        }
 
         bool operator==(const Quaternion<T>& other) const {
             return _vector == other._vector && TypeTraits<T>::equals(_scalar, other._scalar);
@@ -4419,6 +4607,8 @@ template<class T> class Quaternion {
         Matrix3x3<T> toMatrix() const;
 
         Vector3<Rad<T>> toEuler() const;
+
+        Quaternion<T> operator+() const { return *this; }
 
         Quaternion<T> operator-() const { return {-_vector, -_scalar}; }
 
@@ -4482,6 +4672,10 @@ template<class T> class Quaternion {
 
         Vector3<T> transformVectorNormalized(const Vector3<T>& vector) const;
 
+        Vector3<T> reflectVector(const Vector3<T>& vector) const {
+            return ((*this)*Quaternion<T>{vector}*(*this)).vector();
+        }
+
     private:
         template<class> friend class Quaternion;
 
@@ -4536,25 +4730,31 @@ template<class T> Quaternion<T> quaternionFromMatrix(const Matrix3x3<T>& m) {
 }
 
 template<class T> inline Quaternion<T> Quaternion<T>::rotation(const Rad<T> angle, const Vector3<T>& normalizedAxis) {
-    CORRADE_ASSERT(normalizedAxis.isNormalized(),
+    CORRADE_DEBUG_ASSERT(normalizedAxis.isNormalized(),
         "Math::Quaternion::rotation(): axis" << normalizedAxis << "is not normalized", {});
     return {normalizedAxis*std::sin(T(angle)/2), std::cos(T(angle)/2)};
 }
 
+template<class T> inline Quaternion<T> Quaternion<T>::reflection(const Vector3<T>& normal) {
+    CORRADE_DEBUG_ASSERT(normal.isNormalized(),
+        "Math::Quaternion::reflection(): normal" << normal << "is not normalized", {});
+    return {normal, 0.0f};
+}
+
 template<class T> inline Quaternion<T> Quaternion<T>::fromMatrix(const Matrix3x3<T>& matrix) {
-    CORRADE_ASSERT(matrix.isOrthogonal(),
-        "Math::Quaternion::fromMatrix(): the matrix is not orthogonal:" << Corrade::Utility::Debug::newline << matrix, {});
+    CORRADE_DEBUG_ASSERT(std::abs(matrix.determinant() - T(1)) < T(3)*TypeTraits<T>::epsilon(),
+        "Math::Quaternion::fromMatrix(): the matrix is not a rotation:" << Corrade::Utility::Debug::newline << matrix, {});
     return Implementation::quaternionFromMatrix(matrix);
 }
 
 template<class T> inline Rad<T> Quaternion<T>::angle() const {
-    CORRADE_ASSERT(isNormalized(),
+    CORRADE_DEBUG_ASSERT(isNormalized(),
         "Math::Quaternion::angle():" << *this << "is not normalized", {});
     return Rad<T>(T(2)*std::acos(_scalar));
 }
 
 template<class T> inline Vector3<T> Quaternion<T>::axis() const {
-    CORRADE_ASSERT(isNormalized(),
+    CORRADE_DEBUG_ASSERT(isNormalized(),
         "Math::Quaternion::axis():" << *this << "is not normalized", {});
     return _vector/std::sqrt(1-pow2(_scalar));
 }
@@ -4574,7 +4774,7 @@ template<class T> Matrix3x3<T> Quaternion<T>::toMatrix() const {
 }
 
 template<class T> Vector3<Rad<T>> Quaternion<T>::toEuler() const {
-    CORRADE_ASSERT(isNormalized(),
+    CORRADE_DEBUG_ASSERT(isNormalized(),
         "Math::Quaternion::toEuler():" << *this << "is not normalized", {});
 
     Vector3<Rad<T>> euler{Magnum::NoInit};
@@ -4608,32 +4808,16 @@ template<class T> inline Quaternion<T> Quaternion<T>::operator*(const Quaternion
 }
 
 template<class T> inline Quaternion<T> Quaternion<T>::invertedNormalized() const {
-    CORRADE_ASSERT(isNormalized(),
+    CORRADE_DEBUG_ASSERT(isNormalized(),
         "Math::Quaternion::invertedNormalized():" << *this << "is not normalized", {});
     return conjugated();
 }
 
 template<class T> inline Vector3<T> Quaternion<T>::transformVectorNormalized(const Vector3<T>& vector) const {
-    CORRADE_ASSERT(isNormalized(),
+    CORRADE_DEBUG_ASSERT(isNormalized(),
         "Math::Quaternion::transformVectorNormalized():" << *this << "is not normalized", {});
     const Vector3<T> t = T(2)*Math::cross(_vector, vector);
     return vector + _scalar*t + Math::cross(_vector, t);
-}
-
-namespace Implementation {
-
-template<class T> struct StrictWeakOrdering<Quaternion<T>> {
-    bool operator()(const Quaternion<T>& a, const Quaternion<T>& b) const {
-        StrictWeakOrdering<Vector3<T>> o;
-        if(o(a.vector(), b.vector()))
-            return true;
-        if(o(b.vector(), a.vector()))
-            return false;
-
-        return a.scalar() < b.scalar();
-    }
-};
-
 }
 
 }}
@@ -4651,7 +4835,7 @@ template<class T> class CubicHermite {
         template<UnsignedInt dimensions, class U> static
         typename std::enable_if<std::is_base_of<Vector<dimensions, U>, T>::value, CubicHermite<T>>::type
         fromBezier(const CubicBezier<dimensions, U>& a, const CubicBezier<dimensions, U>& b) {
-            return CORRADE_CONSTEXPR_ASSERT(a[3] == b[0],
+            return CORRADE_CONSTEXPR_DEBUG_ASSERT(a[3] == b[0],
                 "Math::CubicHermite::fromBezier(): segments are not adjacent"),
                 CubicHermite<T>{3*(a[3] - a[2]), a[3], 3*(b[1] - a[3])};
         }
@@ -4668,8 +4852,12 @@ template<class T> class CubicHermite {
 
         template<class U> constexpr explicit CubicHermite(const CubicHermite<U>& other) noexcept: _inTangent{T(other._inTangent)}, _point{T(other._point)}, _outTangent{T(other._outTangent)} {}
 
-        T* data() { return &_inTangent; }
-        constexpr const T* data() const { return &_inTangent; }
+        auto data() -> T(&)[3] {
+            return reinterpret_cast<T(&)[3]>(_inTangent);
+        }
+        auto data() const -> const T(&)[3] {
+            return reinterpret_cast<const T(&)[3]>(_inTangent);
+        }
 
         bool operator==(const CubicHermite<T>& other) const;
 
@@ -4760,7 +4948,7 @@ template<class T, class U> T splerp(const CubicHermite<T>& a, const CubicHermite
 }
 
 template<class T> Complex<T> splerp(const CubicHermiteComplex<T>& a, const CubicHermiteComplex<T>& b, T t) {
-    CORRADE_ASSERT(a.point().isNormalized() && b.point().isNormalized(),
+    CORRADE_DEBUG_ASSERT(a.point().isNormalized() && b.point().isNormalized(),
         "Math::splerp(): complex spline points" << a.point() << "and" << b.point() << "are not normalized", {});
     return ((T(2)*t*t*t - T(3)*t*t + T(1))*a.point() +
         (t*t*t - T(2)*t*t + t)*a.outTangent() +
@@ -4769,7 +4957,7 @@ template<class T> Complex<T> splerp(const CubicHermiteComplex<T>& a, const Cubic
 }
 
 template<class T> Quaternion<T> splerp(const CubicHermiteQuaternion<T>& a, const CubicHermiteQuaternion<T>& b, T t) {
-    CORRADE_ASSERT(a.point().isNormalized() && b.point().isNormalized(),
+    CORRADE_DEBUG_ASSERT(a.point().isNormalized() && b.point().isNormalized(),
         "Math::splerp(): quaternion spline points" << a.point() << "and" << b.point() << "are not normalized", {});
     return ((T(2)*t*t*t - T(3)*t*t + T(1))*a.point() +
         (t*t*t - T(2)*t*t + t)*a.outTangent() +
@@ -4783,25 +4971,6 @@ template<class T> inline bool CubicHermite<T>::operator==(const CubicHermite<T>&
         TypeTraits<T>::equals(_outTangent, other._outTangent);
 }
 
-namespace Implementation {
-
-template<class T> struct StrictWeakOrdering<CubicHermite<T>> {
-    bool operator()(const CubicHermite<T>& a, const CubicHermite<T>& b) const {
-        StrictWeakOrdering<T> o;
-        if(o(a.inTangent(), b.inTangent()))
-            return true;
-        if(o(b.inTangent(), a.inTangent()))
-            return false;
-        if(o(a.point(), b.point()))
-            return true;
-        if(o(b.point(), a.point()))
-            return false;
-        return o(a.outTangent(), b.outTangent());
-    }
-};
-
-}
-
 }}
 
 #endif
@@ -4809,6 +4978,22 @@ template<class T> struct StrictWeakOrdering<CubicHermite<T>> {
 #define Magnum_Math_Distance_h
 
 namespace Magnum { namespace Math { namespace Distance {
+
+template<class T> T pointPointSquared(const Vector2<T>& a, const Vector2<T>& b) {
+    return (b - a).dot();
+}
+
+template<class T> T pointPoint(const Vector2<T>& a, const Vector2<T>& b) {
+    return (b - a).length();
+}
+
+template<class T> T pointPointSquared(const Vector3<T>& a, const Vector3<T>& b) {
+    return (b - a).dot();
+}
+
+template<class T> T pointPoint(const Vector3<T>& a, const Vector3<T>& b) {
+    return (b - a).length();
+}
 
 template<class T> inline T linePointSquared(const Vector2<T>& a, const Vector2<T>& b, const Vector2<T>& point) {
     const Vector2<T> bMinusA = b - a;
@@ -4821,7 +5006,8 @@ template<class T> inline T linePoint(const Vector2<T>& a, const Vector2<T>& b, c
 }
 
 template<class T> inline T linePointSquared(const Vector3<T>& a, const Vector3<T>& b, const Vector3<T>& point) {
-    return cross(point - a, point - b).dot()/(b - a).dot();
+    const Vector3<T> bMinusA = b - a;
+    return cross(bMinusA, a - point).dot()/bMinusA.dot();
 }
 
 template<class T> inline T linePoint(const Vector3<T>& a, const Vector3<T>& b, const Vector3<T>& point) {
@@ -4847,7 +5033,7 @@ template<class T> inline T pointPlane(const Vector3<T>& point, const Vector4<T>&
 }
 
 template<class T> inline T pointPlaneNormalized(const Vector3<T>& point, const Vector4<T>& plane) {
-    CORRADE_ASSERT(plane.xyz().isNormalized(),
+    CORRADE_DEBUG_ASSERT(plane.xyz().isNormalized(),
         "Math::Distance::pointPlaneNormalized(): plane normal" << plane.xyz() << "is not normalized", {});
     return pointPlaneScaled<T>(point, plane);
 }
@@ -4905,64 +5091,6 @@ template<class T> T lineSegmentPointSquared(const Vector3<T>& a, const Vector3<T
 }}}
 
 #endif
-#ifndef Corrade_Utility_TypeTraits_h
-#define Corrade_Utility_TypeTraits_h
-
-namespace Corrade { namespace Utility {
-
-namespace Implementation {
-    template<class> struct FloatPrecision;
-    template<> struct FloatPrecision<float> {
-        enum: int { Digits = 6 };
-        constexpr static float epsilon() { return 1.0e-5f; }
-    };
-    template<> struct FloatPrecision<double> {
-        enum: int { Digits = 15 };
-        constexpr static double epsilon() { return 1.0e-14; }
-    };
-    template<> struct FloatPrecision<long double> {
-        #ifndef CORRADE_LONG_DOUBLE_SAME_AS_DOUBLE
-        enum: int { Digits = 18 };
-        constexpr static long double epsilon() { return 1.0e-17l; }
-        #else
-        enum: int { Digits = 15 };
-        constexpr static long double epsilon() { return 1.0e-14l; }
-        #endif
-    };
-}
-
-#if !defined(CORRADE_TARGET_LIBSTDCXX) || __GNUC__ >= 5 || _GLIBCXX_RELEASE >= 7
-#define CORRADE_STD_IS_TRIVIALLY_TRAITS_SUPPORTED
-#endif
-
-#define CORRADE_HAS_TYPE(className, ...)                                    \
-template<class U> class className {                                         \
-    template<class T> static char get(T&&, __VA_ARGS__* = nullptr);         \
-    static short get(...);                                                  \
-    public:                                                                 \
-        enum: bool { value = sizeof(get(std::declval<U>())) == sizeof(char) }; \
-}
-
-namespace Implementation {
-    CORRADE_HAS_TYPE(HasMemberBegin, decltype(std::declval<T>().begin()));
-    CORRADE_HAS_TYPE(HasMemberEnd, decltype(std::declval<T>().end()));
-    CORRADE_HAS_TYPE(HasBegin, decltype(begin(std::declval<T>())));
-    CORRADE_HAS_TYPE(HasEnd, decltype(end(std::declval<T>())));
-    CORRADE_HAS_TYPE(HasMemberCStr, decltype(std::declval<T>().c_str()));
-}
-
-template<class T> using IsIterable = std::integral_constant<bool,
-    (Implementation::HasMemberBegin<T>::value || Implementation::HasBegin<T>::value) &&
-    (Implementation::HasMemberEnd<T>::value || Implementation::HasEnd<T>::value)
-    >;
-
-template<class T> using IsStringLike = std::integral_constant<bool,
-    Implementation::HasMemberCStr<T>::value
-    >;
-
-}}
-
-#endif
 #ifndef Magnum_Math_Dual_h
 #define Magnum_Math_Dual_h
 
@@ -4995,10 +5123,12 @@ template<class T> class Dual {
 
         template<class U> constexpr explicit Dual(const Dual<U>& other) noexcept: _real{T(other._real)}, _dual{T(other._dual)} {}
 
-        constexpr /*implicit*/ Dual(const Dual<T>&) noexcept = default;
-
-        T* data() { return &_real; }
-        constexpr const T* data() const { return &_real; }
+        auto data() -> T(&)[2] {
+            return reinterpret_cast<T(&)[2]>(_real);
+        }
+        auto data() const -> const T(&)[2] {
+            return reinterpret_cast<const T(&)[2]>(_real);
+        }
 
         bool operator==(const Dual<T>& other) const {
             return TypeTraits<T>::equals(_real, other._real) &&
@@ -5014,6 +5144,8 @@ template<class T> class Dual {
 
         T& dual() { return _dual; }
         constexpr const T dual() const { return _dual; }
+
+        Dual<T> operator+() const { return *this; }
 
         Dual<T>& operator+=(const Dual<T>& other) {
             _real += other._real;
@@ -5068,6 +5200,9 @@ template<class T, class U, class V = typename std::enable_if<!Implementation::Is
 }
 
 #define MAGNUM_DUAL_SUBCLASS_IMPLEMENTATION(Type, Underlying, Multiplicable) \
+    Type<T> operator+() const {                                             \
+        return Math::Dual<Underlying<T>>::operator+();                      \
+    }                                                                       \
     Type<T> operator-() const {                                             \
         return Math::Dual<Underlying<T>>::operator-();                      \
     }                                                                       \
@@ -5138,22 +5273,6 @@ template<class T> std::pair<Dual<T>, Dual<T>> sincos(const Dual<Deg<T>>& angle) 
 template<class T> std::pair<Dual<T>, Dual<T>> sincos(const Dual<Unit<Rad, T>>& angle) { return sincos(Dual<Rad<T>>(angle)); }
 template<class T> std::pair<Dual<T>, Dual<T>> sincos(const Dual<Unit<Deg, T>>& angle) { return sincos(Dual<Rad<T>>(angle)); }
 
-namespace Implementation {
-
-template<class T> struct StrictWeakOrdering<Dual<T>> {
-    bool operator()(const Dual<T>& a, const Dual<T>& b) const {
-        StrictWeakOrdering<T> o;
-        if(o(a.real(), b.real()))
-            return true;
-        if(o(b.real(), a.real()))
-            return false;
-
-        return o(a.dual(), b.dual());
-    }
-};
-
-}
-
 }}
 
 #endif
@@ -5179,7 +5298,7 @@ template<class T> class Matrix3: public Matrix3x3<T> {
         static Matrix3<T> rotation(Rad<T> angle);
 
         static Matrix3<T> reflection(const Vector2<T>& normal) {
-            CORRADE_ASSERT(normal.isNormalized(),
+            CORRADE_DEBUG_ASSERT(normal.isNormalized(),
                 "Math::Matrix3::reflection(): normal" << normal << "is not normalized", {});
             return from(Matrix2x2<T>() - T(2)*normal*RectangularMatrix<1, 2, T>(normal).transposed(), {});
         }
@@ -5197,8 +5316,10 @@ template<class T> class Matrix3: public Matrix3x3<T> {
         }
 
         static Matrix3<T> projection(const Vector2<T>& size) {
-            return scaling(2.0f/size);
+            return scaling(T(2.0)/size);
         }
+
+        static Matrix3<T> projection(const Vector2<T>& bottomLeft, const Vector2<T>& topRight);
 
         constexpr static Matrix3<T> from(const Matrix2x2<T>& rotationScaling, const Vector2<T>& translation) {
             return {{rotationScaling[0], T(0)},
@@ -5222,7 +5343,11 @@ template<class T> class Matrix3: public Matrix3x3<T> {
 
         template<class U, class V = decltype(Implementation::RectangularMatrixConverter<3, 3, T, U>::from(std::declval<U>()))> constexpr explicit Matrix3(const U& other) noexcept: Matrix3x3<T>(Implementation::RectangularMatrixConverter<3, 3, T, U>::from(other)) {}
 
-        template<std::size_t otherSize> constexpr explicit Matrix3(const RectangularMatrix<otherSize, otherSize, T>& other) noexcept: Matrix3x3<T>{other} {}
+        template<std::size_t otherCols, std::size_t otherRows> constexpr explicit Matrix3(IdentityInitT, const RectangularMatrix<otherCols, otherRows, T>& other, T value = T(1)) noexcept: Matrix3x3<T>{IdentityInit, other, value} {}
+
+        template<std::size_t otherCols, std::size_t otherRows> constexpr explicit Matrix3(ZeroInitT, const RectangularMatrix<otherCols, otherRows, T>& other) noexcept: Matrix3x3<T>{ZeroInit, other} {}
+
+        template<std::size_t otherCols, std::size_t otherRows> constexpr explicit Matrix3(const RectangularMatrix<otherCols, otherRows, T>& other, T value = T(1)) noexcept: Matrix3x3<T>{IdentityInit, other, value} {}
 
         constexpr /*implicit*/ Matrix3(const RectangularMatrix<3, 3, T>& other) noexcept: Matrix3x3<T>(other) {}
 
@@ -5292,10 +5417,20 @@ template<class T> Matrix3<T> Matrix3<T>::rotation(const Rad<T> angle) {
             {   T(0),   T(0), T(1)}};
 }
 
+template<class T> Matrix3<T> Matrix3<T>::projection(const Vector2<T>& bottomLeft, const Vector2<T>& topRight) {
+    const Vector2<T> difference = topRight - bottomLeft;
+    const Vector2<T> scale = T(2.0)/difference;
+    const Vector2<T> offset = (topRight + bottomLeft)/difference;
+
+    return {{  scale.x(),        T(0), T(0)},
+            {       T(0),   scale.y(), T(0)},
+            {-offset.x(), -offset.y(), T(1)}};
+}
+
 template<class T> Matrix2x2<T> Matrix3<T>::rotation() const {
     Matrix2x2<T> rotation{(*this)[0].xy().normalized(),
                           (*this)[1].xy().normalized()};
-    CORRADE_ASSERT(rotation.isOrthogonal(),
+    CORRADE_DEBUG_ASSERT(rotation.isOrthogonal(),
         "Math::Matrix3::rotation(): the normalized rotation part is not orthogonal:" << Corrade::Utility::Debug::newline << rotation, {});
     return rotation;
 }
@@ -5303,28 +5438,24 @@ template<class T> Matrix2x2<T> Matrix3<T>::rotation() const {
 template<class T> Matrix2x2<T> Matrix3<T>::rotationNormalized() const {
     Matrix2x2<T> rotation{(*this)[0].xy(),
                           (*this)[1].xy()};
-    CORRADE_ASSERT(rotation.isOrthogonal(),
+    CORRADE_DEBUG_ASSERT(rotation.isOrthogonal(),
         "Math::Matrix3::rotationNormalized(): the rotation part is not orthogonal:" << Corrade::Utility::Debug::newline << rotation, {});
     return rotation;
 }
 
 template<class T> T Matrix3<T>::uniformScalingSquared() const {
     const T scalingSquared = (*this)[0].xy().dot();
-    CORRADE_ASSERT(TypeTraits<T>::equals((*this)[1].xy().dot(), scalingSquared),
+    CORRADE_DEBUG_ASSERT(TypeTraits<T>::equals((*this)[1].xy().dot(), scalingSquared),
         "Math::Matrix3::uniformScaling(): the matrix doesn't have uniform scaling:" << Corrade::Utility::Debug::newline << rotationScaling(), {});
     return scalingSquared;
 }
 
 template<class T> inline Matrix3<T> Matrix3<T>::invertedRigid() const {
-    CORRADE_ASSERT(isRigidTransformation(),
+    CORRADE_DEBUG_ASSERT(isRigidTransformation(),
         "Math::Matrix3::invertedRigid(): the matrix doesn't represent a rigid transformation:" << Corrade::Utility::Debug::newline << *this, {});
 
     Matrix2x2<T> inverseRotation = rotationScaling().transposed();
     return from(inverseRotation, inverseRotation*-translation());
-}
-
-namespace Implementation {
-    template<class T> struct StrictWeakOrdering<Matrix3<T>>: StrictWeakOrdering<RectangularMatrix<3, 3, T>> {};
 }
 
 }}
@@ -5352,9 +5483,13 @@ template<class T> class DualComplex: public Dual<Complex<T>> {
         }
 
         static DualComplex<T> fromMatrix(const Matrix3<T>& matrix) {
-            CORRADE_ASSERT(matrix.isRigidTransformation(),
+            CORRADE_DEBUG_ASSERT(matrix.isRigidTransformation(),
                 "Math::DualComplex::fromMatrix(): the matrix doesn't represent rigid transformation:" << Corrade::Utility::Debug::newline << matrix, {});
             return {Implementation::complexFromMatrix(matrix.rotationScaling()), Complex<T>(matrix.translation())};
+        }
+
+        static DualComplex<T> from(const Complex<T>& rotation, const Vector2<T>& translation) {
+            return {rotation, Complex<T>{translation}};
         }
 
         constexpr /*implicit*/ DualComplex() noexcept: Dual<Complex<T>>({}, {T(0), T(0)}) {}
@@ -5379,8 +5514,12 @@ template<class T> class DualComplex: public Dual<Complex<T>> {
             return Implementation::DualComplexConverter<T, U>::to(*this);
         }
 
-        T* data() { return Dual<Complex<T>>::data()->data(); }
-        constexpr const T* data() const { return Dual<Complex<T>>::data()->data(); }
+        auto data() -> T(&)[4] {
+            return reinterpret_cast<T(&)[4]>(Dual<Complex<T>>::data());
+        }
+        auto data() const -> const T(&)[4] {
+            return reinterpret_cast<const T(&)[4]>(Dual<Complex<T>>::data());
+        }
 
         bool isNormalized() const {
             return Implementation::isNormalizedSquared(lengthSquared());
@@ -5447,10 +5586,6 @@ template<class T> class DualComplex: public Dual<Complex<T>> {
 
 MAGNUM_DUAL_OPERATOR_IMPLEMENTATION(DualComplex, Vector2, T)
 
-namespace Implementation {
-    template<class T> struct StrictWeakOrdering<DualComplex<T>>: StrictWeakOrdering<Dual<Complex<T>>> {};
-}
-
 }}
 
 #endif
@@ -5513,6 +5648,8 @@ template<class T> class Matrix4: public Matrix4x4<T> {
 
         static Matrix4<T> orthographicProjection(const Vector2<T>& size, T near, T far);
 
+        static Matrix4<T> orthographicProjection(const Vector2<T>& bottomLeft, const Vector2<T>& topRight, T near, T far);
+
         static Matrix4<T> perspectiveProjection(const Vector2<T>& size, T near, T far);
 
         static Matrix4<T> perspectiveProjection(Rad<T> fov, T aspectRatio, T near, T far) {
@@ -5546,7 +5683,11 @@ template<class T> class Matrix4: public Matrix4x4<T> {
 
         template<class U, class V = decltype(Implementation::RectangularMatrixConverter<4, 4, T, U>::from(std::declval<U>()))> constexpr explicit Matrix4(const U& other): Matrix4x4<T>(Implementation::RectangularMatrixConverter<4, 4, T, U>::from(other)) {}
 
-        template<std::size_t otherSize> constexpr explicit Matrix4(const RectangularMatrix<otherSize, otherSize, T>& other) noexcept: Matrix4x4<T>{other} {}
+        template<std::size_t otherCols, std::size_t otherRows> constexpr explicit Matrix4(IdentityInitT, const RectangularMatrix<otherCols, otherRows, T>& other, T value = T(1)) noexcept: Matrix4x4<T>{IdentityInit, other, value} {}
+
+        template<std::size_t otherCols, std::size_t otherRows> constexpr explicit Matrix4(ZeroInitT, const RectangularMatrix<otherCols, otherRows, T>& other) noexcept: Matrix4x4<T>{ZeroInit, other} {}
+
+        template<std::size_t otherCols, std::size_t otherRows> constexpr explicit Matrix4(const RectangularMatrix<otherCols, otherRows, T>& other, T value = T(1)) noexcept: Matrix4x4<T>{IdentityInit, other, value} {}
 
         constexpr /*implicit*/ Matrix4(const RectangularMatrix<4, 4, T>& other) noexcept: Matrix4x4<T>(other) {}
 
@@ -5587,9 +5728,7 @@ template<class T> class Matrix4: public Matrix4x4<T> {
         T uniformScaling() const { return std::sqrt(uniformScalingSquared()); }
 
         Matrix3x3<T> normalMatrix() const {
-            return Matrix3x3<T>{(*this)[0].xyz(),
-                                (*this)[1].xyz(),
-                                (*this)[2].xyz()}.comatrix();
+            return rotationScaling().inverted().transposed();
         }
 
         Vector3<T>& right() { return (*this)[0].xyz(); }
@@ -5603,6 +5742,22 @@ template<class T> class Matrix4: public Matrix4x4<T> {
 
         Vector3<T>& translation() { return (*this)[3].xyz(); }
         constexpr Vector3<T> translation() const { return (*this)[3].xyz(); }
+
+        Float orthographicProjectionNear() const {
+            return ((*this)[3][2] + T(1))/(*this)[2][2];
+        }
+
+        Float orthographicProjectionFar() const {
+            return ((*this)[3][2] - T(1))/(*this)[2][2];
+        }
+
+        Float perspectiveProjectionNear() const {
+            return (*this)[3][2]/((*this)[2][2] - T(1));
+        }
+
+        Float perspectiveProjectionFar() const {
+            return std::abs((*this)[3][2]/((*this)[2][2] + T(1)));
+        }
 
         Matrix4<T> invertedRigid() const;
 
@@ -5622,7 +5777,7 @@ template<class T> class Matrix4: public Matrix4x4<T> {
 MAGNUM_MATRIXn_OPERATOR_IMPLEMENTATION(4, Matrix4)
 
 template<class T> Matrix4<T> Matrix4<T>::rotation(const Rad<T> angle, const Vector3<T>& normalizedAxis) {
-    CORRADE_ASSERT(normalizedAxis.isNormalized(),
+    CORRADE_DEBUG_ASSERT(normalizedAxis.isNormalized(),
         "Math::Matrix4::rotation(): axis" << normalizedAxis << "is not normalized", {});
 
     const T sine = std::sin(T(angle));
@@ -5684,7 +5839,7 @@ template<class T> Matrix4<T> Matrix4<T>::rotationZ(const Rad<T> angle) {
 }
 
 template<class T> Matrix4<T> Matrix4<T>::reflection(const Vector3<T>& normal) {
-    CORRADE_ASSERT(normal.isNormalized(),
+    CORRADE_DEBUG_ASSERT(normal.isNormalized(),
         "Math::Matrix4::reflection(): normal" << normal << "is not normalized", {});
     return from(Matrix3x3<T>() - T(2)*normal*RectangularMatrix<1, 3, T>(normal).transposed(), {});
 }
@@ -5697,6 +5852,17 @@ template<class T> Matrix4<T> Matrix4<T>::orthographicProjection(const Vector2<T>
             {       T(0), xyScale.y(),             T(0), T(0)},
             {       T(0),        T(0),           zScale, T(0)},
             {       T(0),        T(0), near*zScale-T(1), T(1)}};
+}
+
+template<class T> Matrix4<T> Matrix4<T>::orthographicProjection(const Vector2<T>& bottomLeft, const Vector2<T>& topRight, const T near, const T far) {
+    const Vector3<T> difference{topRight - bottomLeft, near - far};
+    const Vector3<T> scale = T(2.0)/difference;
+    const Vector3<T> offset = Vector3<T>{topRight + bottomLeft, near + far}/difference;
+
+    return {{  scale.x(),        T(0),       T(0), T(0)},
+            {       T(0),   scale.y(),       T(0), T(0)},
+            {       T(0),        T(0),  scale.z(), T(0)},
+            {-offset.x(), -offset.y(), offset.z(), T(1)}};
 }
 
 template<class T> Matrix4<T> Matrix4<T>::perspectiveProjection(const Vector2<T>& size, const T near, const T far) {
@@ -5750,7 +5916,7 @@ template<class T> Matrix3x3<T> Matrix4<T>::rotation() const {
     Matrix3x3<T> rotation{(*this)[0].xyz().normalized(),
                           (*this)[1].xyz().normalized(),
                           (*this)[2].xyz().normalized()};
-    CORRADE_ASSERT(rotation.isOrthogonal(),
+    CORRADE_DEBUG_ASSERT(rotation.isOrthogonal(),
         "Math::Matrix4::rotation(): the normalized rotation part is not orthogonal:" << Corrade::Utility::Debug::newline << rotation, {});
     return rotation;
 }
@@ -5759,29 +5925,25 @@ template<class T> Matrix3x3<T> Matrix4<T>::rotationNormalized() const {
     Matrix3x3<T> rotation{(*this)[0].xyz(),
                           (*this)[1].xyz(),
                           (*this)[2].xyz()};
-    CORRADE_ASSERT(rotation.isOrthogonal(),
+    CORRADE_DEBUG_ASSERT(rotation.isOrthogonal(),
         "Math::Matrix4::rotationNormalized(): the rotation part is not orthogonal:" << Corrade::Utility::Debug::newline << rotation, {});
     return rotation;
 }
 
 template<class T> T Matrix4<T>::uniformScalingSquared() const {
     const T scalingSquared = (*this)[0].xyz().dot();
-    CORRADE_ASSERT(TypeTraits<T>::equals((*this)[1].xyz().dot(), scalingSquared) &&
+    CORRADE_DEBUG_ASSERT(TypeTraits<T>::equals((*this)[1].xyz().dot(), scalingSquared) &&
                    TypeTraits<T>::equals((*this)[2].xyz().dot(), scalingSquared),
         "Math::Matrix4::uniformScaling(): the matrix doesn't have uniform scaling:" << Corrade::Utility::Debug::newline << rotationScaling(), {});
     return scalingSquared;
 }
 
 template<class T> Matrix4<T> Matrix4<T>::invertedRigid() const {
-    CORRADE_ASSERT(isRigidTransformation(),
+    CORRADE_DEBUG_ASSERT(isRigidTransformation(),
         "Math::Matrix4::invertedRigid(): the matrix doesn't represent a rigid transformation:" << Corrade::Utility::Debug::newline << *this, {});
 
     Matrix3x3<T> inverseRotation = rotationScaling().transposed();
     return from(inverseRotation, inverseRotation*-translation());
-}
-
-namespace Implementation {
-    template<class T> struct StrictWeakOrdering<Matrix4<T>>: StrictWeakOrdering<RectangularMatrix<4, 4, T>> {};
 }
 
 }}
@@ -5797,7 +5959,7 @@ namespace Implementation {
 }
 
 template<class T> inline DualQuaternion<T> sclerp(const DualQuaternion<T>& normalizedA, const DualQuaternion<T>& normalizedB, const T t) {
-    CORRADE_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
+    CORRADE_DEBUG_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
         "Math::sclerp(): dual quaternions" << normalizedA << "and" << normalizedB << "are not normalized", {});
     const T cosHalfAngle = dot(normalizedA.real(), normalizedB.real());
 
@@ -5820,7 +5982,7 @@ template<class T> inline DualQuaternion<T> sclerp(const DualQuaternion<T>& norma
 }
 
 template<class T> inline DualQuaternion<T> sclerpShortestPath(const DualQuaternion<T>& normalizedA, const DualQuaternion<T>& normalizedB, const T t) {
-    CORRADE_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
+    CORRADE_DEBUG_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
         "Math::sclerp(): dual quaternions" << normalizedA << "and" << normalizedB << "are not normalized", {});
     const T cosHalfAngle = dot(normalizedA.real(), normalizedB.real());
 
@@ -5855,11 +6017,15 @@ template<class T> class DualQuaternion: public Dual<Quaternion<T>> {
         }
 
         static DualQuaternion<T> fromMatrix(const Matrix4<T>& matrix) {
-            CORRADE_ASSERT(matrix.isRigidTransformation(),
+            CORRADE_DEBUG_ASSERT(matrix.isRigidTransformation(),
                 "Math::DualQuaternion::fromMatrix(): the matrix doesn't represent a rigid transformation:" << Corrade::Utility::Debug::newline << matrix, {});
 
             Quaternion<T> q = Implementation::quaternionFromMatrix(matrix.rotationScaling());
             return {q, Quaternion<T>(matrix.translation()/2)*q};
+        }
+
+        static DualQuaternion<T> from(const Quaternion<T>& rotation, const Vector3<T>& translation) {
+            return {rotation, Quaternion<T>{translation/T(2)}*rotation};
         }
 
         constexpr /*implicit*/ DualQuaternion() noexcept: Dual<Quaternion<T>>{{}, {{}, T(0)}} {}
@@ -5886,8 +6052,12 @@ template<class T> class DualQuaternion: public Dual<Quaternion<T>> {
             return Implementation::DualQuaternionConverter<T, U>::to(*this);
         }
 
-        T* data() { return Dual<Quaternion<T>>::data()->data(); }
-        constexpr const T* data() const { return Dual<Quaternion<T>>::data()->data(); }
+        auto data() -> T(&)[8] {
+            return reinterpret_cast<T(&)[8]>(Dual<Quaternion<T>>::data());
+        }
+        auto data() const -> const T(&)[8] {
+            return reinterpret_cast<const T(&)[8]>(Dual<Quaternion<T>>::data());
+        }
 
         bool isNormalized() const {
             Dual<T> a = lengthSquared();
@@ -5936,7 +6106,7 @@ template<class T> class DualQuaternion: public Dual<Quaternion<T>> {
         }
 
         DualQuaternion<T> invertedNormalized() const {
-            CORRADE_ASSERT(isNormalized(),
+            CORRADE_DEBUG_ASSERT(isNormalized(),
                 "Math::DualQuaternion::invertedNormalized():" << *this << "is not normalized", {});
             return quaternionConjugated();
         }
@@ -5954,7 +6124,7 @@ template<class T> class DualQuaternion: public Dual<Quaternion<T>> {
         }
 
         Vector3<T> transformPointNormalized(const Vector3<T>& vector) const {
-            CORRADE_ASSERT(isNormalized(),
+            CORRADE_DEBUG_ASSERT(isNormalized(),
                 "Math::DualQuaternion::transformPointNormalized():" << *this << "is not normalized", {});
             return ((*this)*DualQuaternion<T>(vector)*conjugated()).dual().vector();
         }
@@ -5964,10 +6134,6 @@ template<class T> class DualQuaternion: public Dual<Quaternion<T>> {
 };
 
 MAGNUM_DUAL_OPERATOR_IMPLEMENTATION(DualQuaternion, Quaternion, T)
-
-namespace Implementation {
-    template<class T> struct StrictWeakOrdering<DualQuaternion<T>>: StrictWeakOrdering<Dual<Quaternion<T>>> {};
-}
 
 }}
 
@@ -6019,17 +6185,21 @@ template<class T> class Frustum {
             return !operator==(other);
         }
 
-        T* data() { return _data[0].data(); }
-        constexpr const T* data() const { return _data[0].data(); }
+        auto data() -> T(&)[24] {
+            return reinterpret_cast<T(&)[24]>(_data);
+        }
+        auto data() const -> const T(&)[24] {
+            return reinterpret_cast<const T(&)[24]>(_data);
+        }
 
         Vector4<T>& operator[](std::size_t i) {
-            CORRADE_ASSERT(i < 6, "Math::Frustum::operator[](): index" << i << "out of range",
+            CORRADE_DEBUG_ASSERT(i < 6, "Math::Frustum::operator[](): index" << i << "out of range",
                 _data[i]);
             return _data[i];
         }
 
         constexpr const Vector4<T>& operator[](std::size_t i) const {
-            return CORRADE_CONSTEXPR_ASSERT(i < 6, "Math::Frustum::operator[](): index" << i << "out of range"), _data[i];
+            return CORRADE_CONSTEXPR_DEBUG_ASSERT(i < 6, "Math::Frustum::operator[](): index" << i << "out of range"), _data[i];
         }
 
         Vector4<T>* begin() { return _data; }
@@ -6082,24 +6252,6 @@ template<class T> template<class U> constexpr Frustum<T>::Frustum(const Frustum<
     Vector4<T>{other[4]},
     Vector4<T>{other[5]}} {}
 
-namespace Implementation {
-
-template<class T> struct StrictWeakOrdering<Frustum<T>> {
-    bool operator()(const Frustum<T>& a, const Frustum<T>& b) const {
-        StrictWeakOrdering<Vector<4, T>> o;
-        for(std::size_t i = 0; i < 6; ++i) {
-            if(o(a[i], b[i]))
-                return true;
-            if(o(b[i], a[i]))
-                return false;
-        }
-
-        return false;
-    }
-};
-
-}
-
 }}
 
 #endif
@@ -6111,9 +6263,24 @@ namespace Magnum { namespace Math {
 namespace Implementation {
     template<UnsignedInt, class> struct RangeTraits;
 
-    template<class T> struct RangeTraits<1, T> { typedef T Type; };
-    template<class T> struct RangeTraits<2, T> { typedef Vector2<T> Type; };
-    template<class T> struct RangeTraits<3, T> { typedef Vector3<T> Type; };
+    template<class T> struct RangeTraits<1, T> {
+        typedef T Type;
+        constexpr static Type fromVector(const Vector<1, T>& value) {
+            return value[0];
+        }
+    };
+    template<class T> struct RangeTraits<2, T> {
+        typedef Vector2<T> Type;
+        constexpr static Type fromVector(const Vector<2, T>& value) {
+            return value;
+        }
+    };
+    template<class T> struct RangeTraits<3, T> {
+        typedef Vector3<T> Type;
+        constexpr static Type fromVector(const Vector<3, T>& value) {
+            return value;
+        }
+    };
 
     template<UnsignedInt, class, class> struct RangeConverter;
 }
@@ -6139,6 +6306,8 @@ template<UnsignedInt dimensions, class T> class Range {
         explicit Range(Magnum::NoInitT) noexcept: Range<dimensions, T>{Magnum::NoInit, typename std::conditional<dimensions == 1, void*, Magnum::NoInitT*>::type{}} {}
 
         constexpr /*implicit*/ Range(const VectorType& min, const VectorType& max) noexcept: _min{min}, _max{max} {}
+        template<UnsignedInt d = dimensions, class = typename std::enable_if<d == 1>::type>
+        constexpr /*implicit*/ Range(const Vector<dimensions, T>& min, const Vector<dimensions, T>& max) noexcept: _min{Implementation::RangeTraits<dimensions, T>::fromVector(min)}, _max{Implementation::RangeTraits<dimensions, T>::fromVector(max)} {}
 
         /*implicit*/ Range(const std::pair<VectorType, VectorType>& minmax) noexcept:
             _min{minmax.first}, _max{minmax.second} {}
@@ -6150,8 +6319,6 @@ template<UnsignedInt dimensions, class T> class Range {
 
         template<class U, class V = decltype(Implementation::RangeConverter<dimensions, T, U>::from(std::declval<U>()))> constexpr explicit Range(const U& other): Range{Implementation::RangeConverter<dimensions, T, U>::from(other)} {}
 
-        constexpr /*implicit*/ Range(const Range<dimensions, T>&) noexcept = default;
-
         template<class U, class V = decltype(Implementation::RangeConverter<dimensions, T, U>::to(std::declval<Range<dimensions, T>>()))> constexpr explicit operator U() const {
             return Implementation::RangeConverter<dimensions, T, U>::to(*this);
         }
@@ -6162,11 +6329,11 @@ template<UnsignedInt dimensions, class T> class Range {
             return !operator==(other);
         }
 
-        T* data() {
-            return dataInternal(typename std::conditional<dimensions == 1, void*, T*>::type{});
+        auto data() -> T(&)[dimensions*2] {
+            return reinterpret_cast<T(&)[dimensions*2]>(_min);
         }
-        constexpr const T* data() const {
-            return dataInternal(typename std::conditional<dimensions == 1, void*, T*>::type{});
+        auto data() const -> const T(&)[dimensions*2] {
+            return reinterpret_cast<const T(&)[dimensions*2]>(_min);
         }
 
         VectorType& min() { return _min; }
@@ -6211,11 +6378,6 @@ template<UnsignedInt dimensions, class T> class Range {
 
         explicit Range(Magnum::NoInitT, Magnum::NoInitT*) noexcept: _min{Magnum::NoInit}, _max{Magnum::NoInit} {}
         explicit Range(Magnum::NoInitT, void*) noexcept {}
-
-        constexpr const VectorType* dataInternal(void*) const { return &_min; }
-        VectorType* dataInternal(void*) { return &_min; }
-        constexpr const T* dataInternal(T*) const { return _min.data(); }
-        T* dataInternal(T*) { return _min.data(); }
 
         VectorType _min, _max;
 };
@@ -6457,21 +6619,6 @@ template<UnsignedInt dimensions, class T> inline bool Range<dimensions, T>::oper
         TypeTraits<VectorType>::equals(_max, other._max);
 }
 
-namespace Implementation {
-
-template<UnsignedInt dimensions, class T> struct StrictWeakOrdering<Range<dimensions, T>> {
-    bool operator()(const Range<dimensions, T>& a, const Range<dimensions, T>& b) const {
-        StrictWeakOrdering<typename Range<dimensions, T>::VectorType> o;
-        if(o(a.min(), b.min()))
-            return true;
-        if(o(b.min(), a.min()))
-            return false;
-        return o(a.max(), b.max());
-    }
-};
-
-}
-
 }}
 
 #endif
@@ -6479,6 +6626,14 @@ template<UnsignedInt dimensions, class T> struct StrictWeakOrdering<Range<dimens
 #define Magnum_Math_Intersection_h
 
 namespace Magnum { namespace Math { namespace Intersection {
+
+template<class T> inline bool pointCircle(const Vector2<T>& point, const Vector2<T>& circleCenter, T circleRadius) {
+    return (circleCenter - point).dot() <= circleRadius*circleRadius;
+}
+
+template<class T> inline bool pointSphere(const Vector3<T>& point, const Vector3<T>& sphereCenter, T sphereRadius) {
+    return (sphereCenter - point).dot() <= sphereRadius*sphereRadius;
+}
 
 template<class T> inline std::pair<T, T> lineSegmentLineSegment(const Vector2<T>& p, const Vector2<T>& r, const Vector2<T>& q, const Vector2<T>& s) {
     const Vector2<T> qp = q - p;
@@ -6497,6 +6652,8 @@ template<class T> inline T planeLine(const Vector4<T>& plane, const Vector3<T>& 
 template<class T> bool pointFrustum(const Vector3<T>& point, const Frustum<T>& frustum);
 
 template<class T> bool rangeFrustum(const Range3D<T>& range, const Frustum<T>& frustum);
+
+template<class T> bool rayRange(const Vector3<T>& rayOrigin, const Vector3<T>& inverseRayDirection, const Range3D<T>& range);
 
 template<class T> bool aabbFrustum(const Vector3<T>& aabbCenter, const Vector3<T>& aabbExtents, const Frustum<T>& frustum);
 
@@ -6548,6 +6705,14 @@ template<class T> bool rangeFrustum(const Range3D<T>& range, const Frustum<T>& f
     }
 
     return true;
+}
+
+template<class T> bool rayRange(const Vector3<T>& rayOrigin, const Vector3<T>& inverseRayDirection, const Range3D<T>& range) {
+    const Vector3<T> t0 = (range.min() - rayOrigin)*inverseRayDirection;
+    const Vector3<T> t1 = (range.max() - rayOrigin)*inverseRayDirection;
+    const std::pair<Vector3<T>, Vector3<T>> tminMax = minmax(t0, t1);
+
+    return tminMax.first.max() <= tminMax.second.min();
 }
 
 template<class T> bool aabbFrustum(const Vector3<T>& aabbCenter, const Vector3<T>& aabbExtents, const Frustum<T>& frustum) {
@@ -6606,7 +6771,7 @@ template<class T> bool sphereConeView(const Vector3<T>& sphereCenter, const T sp
 }
 
 template<class T> bool sphereConeView(const Vector3<T>& sphereCenter, const T sphereRadius, const Matrix4<T>& coneView, const T sinAngle, const T tanAngle) {
-    CORRADE_ASSERT(coneView.isRigidTransformation(),
+    CORRADE_DEBUG_ASSERT(coneView.isRigidTransformation(),
         "Math::Intersection::sphereConeView(): coneView does not represent a rigid transformation:" << Corrade::Utility::Debug::newline << coneView, false);
 
     const Vector3<T> center = coneView.transformPoint(sphereCenter);
@@ -6711,31 +6876,6 @@ template<class T> bool rangeCone(const Range3D<T>& range, const Vector3<T>& cone
 }}}
 
 #endif
-#ifndef Magnum_Math_StrictWeakOrdering_h
-#define Magnum_Math_StrictWeakOrdering_h
-
-namespace Magnum { namespace Math {
-
-namespace Implementation {
-
-template<class T> struct StrictWeakOrdering {
-    bool operator()(const T& a, const T& b) const {
-        return a < b;
-    }
-};
-
-}
-
-struct StrictWeakOrdering {
-    template<class T> bool operator()(const T& a, const T& b) const {
-        Implementation::StrictWeakOrdering<T> o;
-        return o(a, b);
-    }
-};
-
-}}
-
-#endif
 #ifndef Magnum_Math_Swizzle_h
 #define Magnum_Math_Swizzle_h
 
@@ -6797,7 +6937,7 @@ namespace Implementation {
     template<std::size_t size> struct ScatterComponent<size, 'b', 2>: ScatterComponentOr<size, 2> {};
     template<std::size_t size> struct ScatterComponent<size, 'a', 3>: ScatterComponentOr<size, 3> {};
 
-    template<class T, char component, std::size_t ...sequence> constexpr T scatterComponentOr(const T& vector, const typename T::Type& value, Sequence<sequence...>) {
+    template<class T, char component, std::size_t ...sequence> constexpr T scatterComponentOr(const T& vector, const typename T::Type& value, Corrade::Containers::Implementation::Sequence<sequence...>) {
         return {ScatterComponent<T::Size, component, sequence>::value(vector, value)...};
     }
     template<class T, std::size_t valueSize> constexpr T scatterRecursive(const T& vector, const Vector<valueSize, typename T::Type>&, std::size_t) {
@@ -6805,7 +6945,7 @@ namespace Implementation {
     }
     template<class T, std::size_t valueSize, char component, char ...next> constexpr T scatterRecursive(const T& vector, const Vector<valueSize, typename T::Type>& values, std::size_t valueIndex) {
         return scatterRecursive<T, valueSize, next...>(
-            scatterComponentOr<T, component>(vector, values._data[valueIndex], typename GenerateSequence<T::Size>::Type{}),
+            scatterComponentOr<T, component>(vector, values._data[valueIndex], typename Corrade::Containers::Implementation::GenerateSequence<T::Size>::Type{}),
             values, valueIndex + 1);
     }
 }
@@ -6875,7 +7015,7 @@ template<std::size_t size, std::size_t cols, class T> bool gaussJordanInPlace(Re
 
 template<std::size_t size, class T> Matrix<size, T> gaussJordanInverted(Matrix<size, T> matrix) {
     Matrix<size, T> inverted{Math::IdentityInit};
-    CORRADE_INTERNAL_ASSERT_OUTPUT(gaussJordanInPlaceTransposed(matrix, inverted));
+    CORRADE_INTERNAL_DEBUG_ASSERT_OUTPUT(gaussJordanInPlaceTransposed(matrix, inverted));
     return inverted;
 }
 
@@ -6993,12 +7133,12 @@ template<
     #else
     glm::qualifier
     #endif
-q> struct BoolVectorConverter<2, glm::tvec2<bool, q>> {
-    static BoolVector<2> from(const glm::tvec2<bool, q>& other) {
+q> struct BitVectorConverter<2, glm::tvec2<bool, q>> {
+    static BitVector<2> from(const glm::tvec2<bool, q>& other) {
         return (other.x << 0)|(other.y << 1);
     }
 
-    static glm::tvec2<bool, q> to(const BoolVector<2>& other) {
+    static glm::tvec2<bool, q> to(const BitVector<2>& other) {
         return {other[0], other[1]};
     }
 };
@@ -7009,12 +7149,12 @@ template<
     #else
     glm::qualifier
     #endif
-q> struct BoolVectorConverter<3, glm::tvec3<bool, q>> {
-    static BoolVector<3> from(const glm::tvec3<bool, q>& other) {
+q> struct BitVectorConverter<3, glm::tvec3<bool, q>> {
+    static BitVector<3> from(const glm::tvec3<bool, q>& other) {
         return (other.x << 0)|(other.y << 1)|(other.z << 2);
     }
 
-    static glm::tvec3<bool, q> to(const BoolVector<3>& other) {
+    static glm::tvec3<bool, q> to(const BitVector<3>& other) {
         return {other[0], other[1], other[2]};
     }
 };
@@ -7025,12 +7165,12 @@ template<
     #else
     glm::qualifier
     #endif
-q> struct BoolVectorConverter<4, glm::tvec4<bool, q>> {
-    static BoolVector<4> from(const glm::tvec4<bool, q>& other) {
+q> struct BitVectorConverter<4, glm::tvec4<bool, q>> {
+    static BitVector<4> from(const glm::tvec4<bool, q>& other) {
         return (other.x << 0)|(other.y << 1)|(other.z << 2)|(other.w << 3);
     }
 
-    static glm::tvec4<bool, q> to(const BoolVector<4>& other) {
+    static glm::tvec4<bool, q> to(const BitVector<4>& other) {
         return {other[0], other[1], other[2], other[3]};
     }
 };
@@ -7341,44 +7481,44 @@ namespace Magnum {
 
 namespace Math { namespace Implementation {
 
-template<std::size_t size> struct BoolVectorConverter<size, Eigen::Ref<const Eigen::Array<bool, int(size), 1
-    #ifdef CORRADE_MSVC2019_COMPATIBILITY
+template<std::size_t size> struct BitVectorConverter<size, Eigen::Ref<const Eigen::Array<bool, int(size), 1
+    #if defined(CORRADE_TARGET_MSVC) && !defined(CORRADE_TARGET_CLANG_CL) && _MSC_VER < 1940
     , 0, int(size), 1
     #endif
 >>> {
-    static BoolVector<size> from(const Eigen::Ref<const Eigen::Array<bool, size, 1>>& other) {
-        BoolVector<size> out;
+    static BitVector<size> from(const Eigen::Ref<const Eigen::Array<bool, size, 1>>& other) {
+        BitVector<size> out;
         for(std::size_t i = 0; i != size; ++i)
             out.set(i, other(i, 0));
         return out;
     }
 };
-template<std::size_t size> struct BoolVectorConverter<size, Eigen::Ref<Eigen::Array<bool, int(size), 1
-    #ifdef CORRADE_MSVC2019_COMPATIBILITY
+template<std::size_t size> struct BitVectorConverter<size, Eigen::Ref<Eigen::Array<bool, int(size), 1
+    #if defined(CORRADE_TARGET_MSVC) && !defined(CORRADE_TARGET_CLANG_CL) && _MSC_VER < 1940
     , 0, int(size), 1
     #endif
->>>: BoolVectorConverter<size, Eigen::Ref<const Eigen::Array<bool, int(size), 1
-    #ifdef CORRADE_MSVC2019_COMPATIBILITY
+>>>: BitVectorConverter<size, Eigen::Ref<const Eigen::Array<bool, int(size), 1
+    #if defined(CORRADE_TARGET_MSVC) && !defined(CORRADE_TARGET_CLANG_CL) && _MSC_VER < 1940
     , 0, int(size), 1
     #endif
 >>> {};
-template<std::size_t size> struct BoolVectorConverter<size, Eigen::Array<bool, int(size), 1
-    #ifdef CORRADE_MSVC2019_COMPATIBILITY
+template<std::size_t size> struct BitVectorConverter<size, Eigen::Array<bool, int(size), 1
+    #if defined(CORRADE_TARGET_MSVC) && !defined(CORRADE_TARGET_CLANG_CL) && _MSC_VER < 1940
     , 0, int(size), 1
     #endif
 >> {
-    static BoolVector<size> from(const Eigen::Array<bool, size, 1>& other) {
-        #if defined(__GNUC__) && !defined(__clang__)
+    static BitVector<size> from(const Eigen::Array<bool, size, 1>& other) {
+        #if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG)
         #pragma GCC diagnostic push
         #pragma GCC diagnostic ignored "-Wzero-as-null-pointer-constant"
         #endif
-        return BoolVectorConverter<size, Eigen::Ref<const Eigen::Array<bool, int(size), 1>>>::from(other);
-        #if defined(__GNUC__) && !defined(__clang__)
+        return BitVectorConverter<size, Eigen::Ref<const Eigen::Array<bool, int(size), 1>>>::from(other);
+        #if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG)
         #pragma GCC diagnostic pop
         #endif
     }
 
-    static Eigen::Array<bool, size, 1> to(const BoolVector<size>& other) {
+    static Eigen::Array<bool, size, 1> to(const BitVector<size>& other) {
         Eigen::Array<bool, size, 1> out;
         for(std::size_t i = 0; i != size; ++i)
             out(i, 0) = other[i];
@@ -7387,7 +7527,7 @@ template<std::size_t size> struct BoolVectorConverter<size, Eigen::Array<bool, i
 };
 
 template<std::size_t size, class T> struct VectorConverter<size, T, Eigen::Ref<const Eigen::Array<T, int(size), 1
-    #ifdef CORRADE_MSVC2019_COMPATIBILITY
+    #if defined(CORRADE_TARGET_MSVC) && !defined(CORRADE_TARGET_CLANG_CL) && _MSC_VER < 1940
     , 0, int(size), 1
     #endif
 >>> {
@@ -7399,26 +7539,26 @@ template<std::size_t size, class T> struct VectorConverter<size, T, Eigen::Ref<c
     }
 };
 template<std::size_t size, class T> struct VectorConverter<size, T, Eigen::Ref<Eigen::Array<T, int(size), 1
-    #ifdef CORRADE_MSVC2019_COMPATIBILITY
+    #if defined(CORRADE_TARGET_MSVC) && !defined(CORRADE_TARGET_CLANG_CL) && _MSC_VER < 1940
     , 0, int(size), 1
     #endif
 >>>: VectorConverter<size, T, Eigen::Ref<const Eigen::Array<T, int(size), 1
-    #ifdef CORRADE_MSVC2019_COMPATIBILITY
+    #if defined(CORRADE_TARGET_MSVC) && !defined(CORRADE_TARGET_CLANG_CL) && _MSC_VER < 1940
     , 0, int(size), 1
     #endif
 >>> {};
 template<std::size_t size, class T> struct VectorConverter<size, T, Eigen::Array<T, int(size), 1
-    #ifdef CORRADE_MSVC2019_COMPATIBILITY
+    #if defined(CORRADE_TARGET_MSVC) && !defined(CORRADE_TARGET_CLANG_CL) && _MSC_VER < 1940
     , 0, int(size), 1
     #endif
 >> {
     static Vector<size, T> from(const Eigen::Array<T, size, 1>& other) {
-        #if defined(__GNUC__) && !defined(__clang__)
+        #if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG)
         #pragma GCC diagnostic push
         #pragma GCC diagnostic ignored "-Wzero-as-null-pointer-constant"
         #endif
         return VectorConverter<size, T, Eigen::Ref<const Eigen::Array<T, int(size), 1>>>::from(other);
-        #if defined(__GNUC__) && !defined(__clang__)
+        #if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG)
         #pragma GCC diagnostic pop
         #endif
     }
@@ -7432,7 +7572,7 @@ template<std::size_t size, class T> struct VectorConverter<size, T, Eigen::Array
 };
 
 template<std::size_t size, class T> struct VectorConverter<size, T, Eigen::Ref<const Eigen::Matrix<T, int(size), 1
-    #ifdef CORRADE_MSVC2019_COMPATIBILITY
+    #if defined(CORRADE_TARGET_MSVC) && !defined(CORRADE_TARGET_CLANG_CL) && _MSC_VER < 1940
     , 0, int(size), 1
     #endif
 >>> {
@@ -7444,26 +7584,26 @@ template<std::size_t size, class T> struct VectorConverter<size, T, Eigen::Ref<c
     }
 };
 template<std::size_t size, class T> struct VectorConverter<size, T, Eigen::Ref<Eigen::Matrix<T, int(size), 1
-    #ifdef CORRADE_MSVC2019_COMPATIBILITY
+    #if defined(CORRADE_TARGET_MSVC) && !defined(CORRADE_TARGET_CLANG_CL) && _MSC_VER < 1940
     , 0, int(size), 1
     #endif
 >>>: VectorConverter<size, T, Eigen::Ref<const Eigen::Matrix<T, int(size), 1
-    #ifdef CORRADE_MSVC2019_COMPATIBILITY
+    #if defined(CORRADE_TARGET_MSVC) && !defined(CORRADE_TARGET_CLANG_CL) && _MSC_VER < 1940
     , 0, int(size), 1
     #endif
 >>> {};
 template<std::size_t size, class T> struct VectorConverter<size, T, Eigen::Matrix<T, int(size), 1
-    #ifdef CORRADE_MSVC2019_COMPATIBILITY
+    #if defined(CORRADE_TARGET_MSVC) && !defined(CORRADE_TARGET_CLANG_CL) && _MSC_VER < 1940
     , 0, int(size), 1
     #endif
 >> {
     static Vector<size, T> from(const Eigen::Matrix<T, size, 1>& other) {
-        #if defined(__GNUC__) && !defined(__clang__)
+        #if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG)
         #pragma GCC diagnostic push
         #pragma GCC diagnostic ignored "-Wzero-as-null-pointer-constant"
         #endif
         return VectorConverter<size, T, Eigen::Ref<const Eigen::Matrix<T, int(size), 1>>>::from(other);
-        #if defined(__GNUC__) && !defined(__clang__)
+        #if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG)
         #pragma GCC diagnostic pop
         #endif
     }
@@ -7477,7 +7617,7 @@ template<std::size_t size, class T> struct VectorConverter<size, T, Eigen::Matri
 };
 
 template<std::size_t cols, std::size_t rows, class T> struct RectangularMatrixConverter<cols, rows, T, Eigen::Ref<const Eigen::Array<T, int(rows), int(cols)
-    #ifdef CORRADE_MSVC2019_COMPATIBILITY
+    #if defined(CORRADE_TARGET_MSVC) && !defined(CORRADE_TARGET_CLANG_CL) && _MSC_VER < 1940
     , 0, int(rows), int(cols)
     #endif
 >>> {
@@ -7490,26 +7630,26 @@ template<std::size_t cols, std::size_t rows, class T> struct RectangularMatrixCo
     }
 };
 template<std::size_t cols, std::size_t rows, class T> struct RectangularMatrixConverter<cols, rows, T, Eigen::Ref<Eigen::Array<T, int(rows), int(cols)
-    #ifdef CORRADE_MSVC2019_COMPATIBILITY
+    #if defined(CORRADE_TARGET_MSVC) && !defined(CORRADE_TARGET_CLANG_CL) && _MSC_VER < 1940
     , 0, int(rows), int(cols)
     #endif
 >>>: RectangularMatrixConverter<cols, rows, T, Eigen::Ref<const Eigen::Array<T, int(rows), int(cols)
-    #ifdef CORRADE_MSVC2019_COMPATIBILITY
+    #if defined(CORRADE_TARGET_MSVC) && !defined(CORRADE_TARGET_CLANG_CL) && _MSC_VER < 1940
     , 0, int(rows), int(cols)
     #endif
 >>> {};
 template<std::size_t cols, std::size_t rows, class T> struct RectangularMatrixConverter<cols, rows, T, Eigen::Array<T, int(rows), int(cols)
-    #ifdef CORRADE_MSVC2019_COMPATIBILITY
+    #if defined(CORRADE_TARGET_MSVC) && !defined(CORRADE_TARGET_CLANG_CL) && _MSC_VER < 1940
     , 0, int(rows), int(cols)
     #endif
 >> {
     static RectangularMatrix<cols, rows, T> from(const Eigen::Array<T, rows, cols>& other) {
-        #if defined(__GNUC__) && !defined(__clang__)
+        #if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG)
         #pragma GCC diagnostic push
         #pragma GCC diagnostic ignored "-Wzero-as-null-pointer-constant"
         #endif
         return RectangularMatrixConverter<cols, rows, T, Eigen::Ref<const Eigen::Array<T, int(rows), int(cols)>>>::from(other);
-        #if defined(__GNUC__) && !defined(__clang__)
+        #if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG)
         #pragma GCC diagnostic pop
         #endif
     }
@@ -7524,7 +7664,7 @@ template<std::size_t cols, std::size_t rows, class T> struct RectangularMatrixCo
 };
 
 template<std::size_t cols, std::size_t rows, class T> struct RectangularMatrixConverter<cols, rows, T, Eigen::Ref<const Eigen::Matrix<T, int(rows), int(cols)
-    #ifdef CORRADE_MSVC2019_COMPATIBILITY
+    #if defined(CORRADE_TARGET_MSVC) && !defined(CORRADE_TARGET_CLANG_CL) && _MSC_VER < 1940
     , 0, int(rows), int(cols)
     #endif
 >>> {
@@ -7537,26 +7677,26 @@ template<std::size_t cols, std::size_t rows, class T> struct RectangularMatrixCo
     }
 };
 template<std::size_t cols, std::size_t rows, class T> struct RectangularMatrixConverter<cols, rows, T, Eigen::Ref<Eigen::Matrix<T, int(rows), int(cols)
-    #ifdef CORRADE_MSVC2019_COMPATIBILITY
+    #if defined(CORRADE_TARGET_MSVC) && !defined(CORRADE_TARGET_CLANG_CL) && _MSC_VER < 1940
     , 0, int(rows), int(cols)
     #endif
 >>>: RectangularMatrixConverter<cols, rows, T, Eigen::Ref<const Eigen::Matrix<T, int(rows), int(cols)
-    #ifdef CORRADE_MSVC2019_COMPATIBILITY
+    #if defined(CORRADE_TARGET_MSVC) && !defined(CORRADE_TARGET_CLANG_CL) && _MSC_VER < 1940
     , 0, int(rows), int(cols)
     #endif
 >>> {};
 template<std::size_t cols, std::size_t rows, class T> struct RectangularMatrixConverter<cols, rows, T, Eigen::Matrix<T, int(rows), int(cols)
-    #ifdef CORRADE_MSVC2019_COMPATIBILITY
+    #if defined(CORRADE_TARGET_MSVC) && !defined(CORRADE_TARGET_CLANG_CL) && _MSC_VER < 1940
     , 0, int(rows), int(cols)
     #endif
 >> {
     static RectangularMatrix<cols, rows, T> from(const Eigen::Matrix<T, rows, cols>& other) {
-        #if defined(__GNUC__) && !defined(__clang__)
+        #if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG)
         #pragma GCC diagnostic push
         #pragma GCC diagnostic ignored "-Wzero-as-null-pointer-constant"
         #endif
         return RectangularMatrixConverter<cols, rows, T, Eigen::Ref<const Eigen::Matrix<T, int(rows), int(cols)>>>::from(other);
-        #if defined(__GNUC__) && !defined(__clang__)
+        #if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG)
         #pragma GCC diagnostic pop
         #endif
     }
@@ -7578,8 +7718,8 @@ template<class To, std::size_t cols, std::size_t rows, class T> inline To cast(c
     return Math::Implementation::RectangularMatrixConverter<cols, rows, T, To>::to(from);
 }
 
-template<class To, std::size_t size> inline To cast(const Math::BoolVector<size>& from) {
-    return Math::Implementation::BoolVectorConverter<size, To>::to(from);
+template<class To, std::size_t size> inline To cast(const Math::BitVector<size>& from) {
+    return Math::Implementation::BitVectorConverter<size, To>::to(from);
 }
 
 template<class To, std::size_t size, class T> inline To cast(const Math::Vector<size, T>& from) {
@@ -7648,6 +7788,16 @@ template<class T> struct QuaternionConverter<T, Eigen::Quaternion<T>> {
     }
 };
 
+template<UnsignedInt dimensions, class T> struct RangeConverter<dimensions, T, Eigen::AlignedBox<T, int(dimensions)>> {
+    static Range<dimensions, T> from(const Eigen::AlignedBox<T, int(dimensions)>& other) {
+        return Range<dimensions, T>{Vector<dimensions, T>{other.min()}, Vector<dimensions, T>{other.max()}};
+    }
+
+    static Eigen::AlignedBox<T, int(dimensions)> to(const Range<dimensions, T>& other) {
+        return Eigen::AlignedBox<T, int(dimensions)>{VectorConverter<dimensions, T, Eigen::Matrix<T, int(dimensions), 1>>::to(other.min()), VectorConverter<dimensions, T, Eigen::Matrix<T, int(dimensions), 1>>::to(other.max())};
+    }
+};
+
 }}
 
 namespace EigenIntegration {
@@ -7665,6 +7815,27 @@ template<class To, class T> inline To cast(const Math::Quaternion<T>& from) {
 #ifdef MAGNUM_MATH_IMPLEMENTATION
 namespace Magnum { namespace Math {
 
+#if !defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG)
+namespace {
+
+template<class T> inline UnsignedInt popcountImplementation(T v) {
+    v = v - ((v >> 1) & ~T(0)/3);
+    v = (v & ~T(0)/15*3) + ((v >> 2) & ~T(0)/15*3);
+    v = (v + (v >> 4)) & ~T(0)/255*15;
+    return (v*(~T(0)/255)) >> (sizeof(T) - 1)*8;
+}
+
+}
+
+UnsignedInt popcount(UnsignedInt number) {
+    return popcountImplementation(number);
+}
+
+UnsignedInt popcount(UnsignedLong number) {
+    return popcountImplementation(number);
+}
+#endif
+
 UnsignedInt log(UnsignedInt base, UnsignedInt number) {
     UnsignedInt log = 0;
     while(number /= base)
@@ -7677,6 +7848,26 @@ UnsignedInt log2(UnsignedInt number) {
     while(number >>= 1)
         ++log;
     return log;
+}
+
+UnsignedLong binomialCoefficient(const UnsignedInt n, UnsignedInt k) {
+    CORRADE_DEBUG_ASSERT(n >= k,
+        "Math::binomialCoefficient(): k can't be greater than n in (" << Corrade::Utility::Debug::nospace << n << "choose" << k << Corrade::Utility::Debug::nospace << ")", {});
+
+    if(k*2 > n) k = n - k;
+
+    if(k == 0) return 1;
+
+    UnsignedLong result = n;
+    for(UnsignedInt i = 2; i <= k; ++i) {
+        CORRADE_DEBUG_ASSERT(result < ~UnsignedLong{} / (n-i+1),
+            "Math::binomialCoefficient(): overflow for (" << Corrade::Utility::Debug::nospace << n << "choose" << k << Corrade::Utility::Debug::nospace << ")", {});
+
+        result *= n - i + 1;
+        result /= i;
+    }
+
+    return result;
 }
 
 }}

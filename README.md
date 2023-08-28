@@ -32,7 +32,7 @@ Library         | LoC | PpLoC<sup>[1]</sup>     | Description
 **[CorradeStlForwardTuple.h](CorradeStlForwardTuple.h)** | 102 | 2228 | [Corrade's forward declaration for `std::tuple`](https://doc.magnum.graphics/corrade/StlForwardTuple_8h.html), a lightweight alternative to the full [`<tuple>`](https://en.cppreference.com/w/cpp/header/tuple) (13k PpLOC<sup>[1]</sup>) where supported
 **[CorradeStlForwardVector.h](CorradeStlForwardVector.h)** | 77 | 481<sup>[3]</sup> | [Corrade's forward declaration for `std::vector`](https://doc.magnum.graphics/corrade/StlForwardVector_8h.html), a lightweight alternative to the full [`<vector>`](https://en.cppreference.com/w/cpp/header/tuple) (9k PpLOC<sup>[1]</sup>) where supported
 **[CorradeStlMath.h](CorradeStlMath.h)** | 73 | 3222<sup>[4]</sup> | [Corrade's optimized `<cmath>`](https://doc.magnum.graphics/corrade/StlMath_8h.html), without the heavy C++17 additions (which is otherwise 11k PpLOC<sup>[4]</sup>)
-**[MagnumMath.hpp](MagnumMath.hpp)** | 7748 | 10066       | [Math](https://doc.magnum.graphics/magnum/namespaceMagnum_1_1Math.html) namespace, a full-featured graphics-oriented linear algebra library
+**[MagnumMath.hpp](MagnumMath.hpp)** | 7939 | 10094       | [Math](https://doc.magnum.graphics/magnum/namespaceMagnum_1_1Math.html) namespace, a full-featured graphics-oriented linear algebra library
 
 <sup>[1]</sup> — lines of code after a preprocessor run, with system includes
 expanded. Gathered using GCC 13.2 and libstdc++, unless said otherwise.
