@@ -17,10 +17,12 @@
     `#define CORRADE_PAIR_STL_COMPATIBILITY` before including the file.
     Including it multiple times with different macros defined works too.
 
+    v2020.06-1502-g147e (2023-09-11)
+    -   Fixes to the Utility::swap() helper to avoid ambiguity with std::swap()
     v2020.06-1454-gfc3b7 (2023-08-27)
     -   Initial release
 
-    Generated from Corrade v2020.06-1454-gfc3b7 (2023-08-27), 284 / 1721 LoC
+    Generated from Corrade v2020.06-1502-g147e (2023-09-11), 303 / 1723 LoC
 */
 
 /*
@@ -114,6 +116,10 @@ constexpr InPlaceInitT InPlaceInit{InPlaceInitT::Init{}};
 #ifndef Corrade_Utility_Move_h
 #define Corrade_Utility_Move_h
 
+#ifdef CORRADE_MSVC2015_COMPATIBILITY
+#include <utility>
+#endif
+
 namespace Corrade { namespace Utility {
 
 template<class T> constexpr T&& forward(typename std::remove_reference<T>::type& t) noexcept {
@@ -129,16 +135,25 @@ template<class T> constexpr typename std::remove_reference<T>::type&& move(T&& t
     return static_cast<typename std::remove_reference<T>::type&&>(t);
 }
 
-template<class T> void swap(T& a, T& b) noexcept(std::is_nothrow_move_constructible<T>::value && std::is_nothrow_move_assignable<T>::value) {
+#ifndef CORRADE_MSVC2015_COMPATIBILITY
+template<class T> void swap(T& a, typename std::common_type<T>::type& b) noexcept(std::is_nothrow_move_constructible<T>::value && std::is_nothrow_move_assignable<T>::value) {
     T tmp = static_cast<T&&>(a);
     a = static_cast<T&&>(b);
     b = static_cast<T&&>(tmp);
 }
-template<class T> void swap(T*& a, T*& b) noexcept {
-    T* tmp = a;
-    a = b;
-    b = tmp;
+#else
+using std::swap;
+#endif
+
+#ifndef CORRADE_MSVC2015_COMPATIBILITY
+template<std::size_t size, class T> void swap(T(&a)[size], typename std::common_type<T(&)[size]>::type b) noexcept(std::is_nothrow_move_constructible<T>::value && std::is_nothrow_move_assignable<T>::value) {
+    for(std::size_t i = 0; i != size; ++i) {
+        T tmp = static_cast<T&&>(a[i]);
+        a[i] = static_cast<T&&>(b[i]);
+        b[i] = static_cast<T&&>(tmp);
+    }
 }
+#endif
 
 }}
 

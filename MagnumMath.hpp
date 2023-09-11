@@ -28,6 +28,8 @@
     `#define MAGNUM_MATH_EIGEN_INTEGRATION` before including the file.
     Including it multiple times with different macros defined works as well.
 
+    v2020.06-2544-g3e435 (2023-09-11)
+    -   Fixes to the Utility::swap() helper to avoid ambiguity with std::swap()
     v2020.06-2502-gfa079385b (2023-08-28)
     -   New Range1Dui, Range2Dui, Range3Dui, Degh, Radh, Range1Dh, Range2Dh and
         Range3Dh typedefs
@@ -96,9 +98,9 @@
     v2019.01-241-g93686746a (2019-04-03)
     -   Initial release
 
-    Generated from Corrade v2020.06-1454-gfc3b7fc44 (2023-08-27),
-        Magnum v2020.06-2502-gfa079385b (2023-08-28) and
-        Magnum Integration v2020.06-195-g9588b02 (2023-08-28), 7939 / 10094 LoC
+    Generated from Corrade v2020.06-1502-g147e (2023-09-11),
+        Magnum v2020.06-2544-g3e435 (2023-09-11) and
+        Magnum Integration v2020.06-201-gbb8a (2023-09-11), 7950 / 10096 LoC
 */
 
 /*
@@ -1080,16 +1082,25 @@ template<class T> constexpr typename std::remove_reference<T>::type&& move(T&& t
     return static_cast<typename std::remove_reference<T>::type&&>(t);
 }
 
-template<class T> void swap(T& a, T& b) noexcept(std::is_nothrow_move_constructible<T>::value && std::is_nothrow_move_assignable<T>::value) {
+#ifndef CORRADE_MSVC2015_COMPATIBILITY
+template<class T> void swap(T& a, typename std::common_type<T>::type& b) noexcept(std::is_nothrow_move_constructible<T>::value && std::is_nothrow_move_assignable<T>::value) {
     T tmp = static_cast<T&&>(a);
     a = static_cast<T&&>(b);
     b = static_cast<T&&>(tmp);
 }
-template<class T> void swap(T*& a, T*& b) noexcept {
-    T* tmp = a;
-    a = b;
-    b = tmp;
+#else
+using std::swap;
+#endif
+
+#ifndef CORRADE_MSVC2015_COMPATIBILITY
+template<std::size_t size, class T> void swap(T(&a)[size], typename std::common_type<T(&)[size]>::type b) noexcept(std::is_nothrow_move_constructible<T>::value && std::is_nothrow_move_assignable<T>::value) {
+    for(std::size_t i = 0; i != size; ++i) {
+        T tmp = static_cast<T&&>(a[i]);
+        a[i] = static_cast<T&&>(b[i]);
+        b[i] = static_cast<T&&>(tmp);
+    }
 }
+#endif
 
 }}
 
@@ -3073,7 +3084,7 @@ template<class T> inline typename std::enable_if<IsScalar<T>::value, std::pair<T
 }
 
 template<std::size_t size, class T> inline std::pair<Vector<size, T>, Vector<size, T>> minmax(const Vector<size, T>& a, const Vector<size, T>& b) {
-    using std::swap;
+    using Corrade::Utility::swap;
     std::pair<Vector<size, T>, Vector<size, T>> out{a, b};
     for(std::size_t i = 0; i != size; ++i)
         if(out.first[i] > out.second[i]) swap(out.first[i], out.second[i]);
@@ -6974,7 +6985,7 @@ template<std::size_t size, std::size_t rows, class T> bool gaussJordanInPlaceTra
             if(std::abs(a[row2][row]) > std::abs(a[rowMax][row]))
                 rowMax = row2;
 
-        using std::swap;
+        using Corrade::Utility::swap;
         swap(a[row], a[rowMax]);
         swap(t[row], t[rowMax]);
 
