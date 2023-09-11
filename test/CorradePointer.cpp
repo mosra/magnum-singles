@@ -36,6 +36,10 @@ using namespace Corrade;
 */
 
 int main() {
+    #ifndef CORRADE_POINTER_STL_COMPATIBILITY
     Containers::Pointer<int> a{InPlaceInit, 42};
+    #else
+    Containers::Pointer<int> a = std::unique_ptr<int>{new int{42}};
+    #endif
     return *a - 42;
 }

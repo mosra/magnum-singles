@@ -41,7 +41,11 @@ using namespace Corrade;
 */
 
 int main() {
+    #ifndef CORRADE_ARRAYVIEW_STL_COMPATIBILITY
     int data[]{1, 3, 42, 1337};
+    #else
+    std::array<int, 4> data{{1, 3, 42, 1337}};
+    #endif
 
     auto a = Containers::arrayView(data);
     Containers::StaticArrayView<1, int> b = a.slice<1>(2);

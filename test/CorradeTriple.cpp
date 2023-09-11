@@ -36,6 +36,10 @@ using namespace Corrade;
 */
 
 int main() {
+    #ifndef CORRADE_TRIPLE_STL_COMPATIBILITY
     Containers::Triple<int, int, int> a{32, -4, 8};
+    #else
+    Containers::Triple<int, int, int> a = std::make_tuple(32, -4, 8);
+    #endif
     return a.first() + a.second()*a.third();
 }

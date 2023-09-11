@@ -38,6 +38,8 @@ jobs:
     - install-gcc-4_8
     - checkout
     - run:
+        # TODO add testing of C++17, C++20 features once such compiler is here
+        # TODO test also Math GLM and Eigen opt-in
         name: Build all singles
         command: |
           export COMPILE="time g++-4.8 -std=c++11 -Wall -Wextra -pedantic"
@@ -49,6 +51,8 @@ jobs:
 
           $COMPILE CorradeArrayView.cpp
           ./a.out
+          $COMPILE CorradeArrayView.cpp -DCORRADE_ARRAYVIEW_STL_COMPATIBILITY
+          ./a.out
           $COMPILE CorradeStridedArrayView.cpp
           ./a.out
           $COMPILE CorradeArray.cpp
@@ -59,13 +63,21 @@ jobs:
           ./a.out
           $COMPILE CorradePair.cpp
           ./a.out
+          $COMPILE CorradePair.cpp -DCORRADE_PAIR_STL_COMPATIBILITY
+          ./a.out
           $COMPILE CorradePointer.cpp
           ./a.out
+          $COMPILE CorradePointer.cpp -DCORRADE_POINTER_STL_COMPATIBILITY
+          ./a.out
           $COMPILE CorradeReference.cpp
+          ./a.out
+          $COMPILE CorradeReference.cpp -DCORRADE_REFERENCE_STL_COMPATIBILITY
           ./a.out
           $COMPILE CorradeScopeGuard.cpp
           ./a.out
           $COMPILE CorradeTriple.cpp
+          ./a.out
+          $COMPILE CorradeTriple.cpp -DCORRADE_TRIPLE_STL_COMPATIBILITY
           ./a.out
           $COMPILE CorradeStlForwardArray.cpp
           ./a.out
@@ -78,6 +90,8 @@ jobs:
           $COMPILE CorradeStlMath.cpp
           ./a.out
           $COMPILE CorradeCpu.cpp
+          ./a.out
+          $COMPILE CorradeCpu.cpp -DCORRADE_CPU_USE_IFUNC
           ./a.out
           $COMPILE MagnumMath.cpp
           ./a.out

@@ -37,6 +37,10 @@ using namespace Corrade;
 
 int main() {
     int a = 42;
+    #ifndef CORRADE_REFERENCE_STL_COMPATIBILITY
     Containers::Reference<int> b{a};
+    #else
+    Containers::Reference<int> b = std::reference_wrapper<int>{a};
+    #endif
     return *b - 42;
 }

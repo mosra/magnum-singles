@@ -36,6 +36,10 @@ using namespace Corrade;
 */
 
 int main() {
+    #ifndef CORRADE_PAIR_STL_COMPATIBILITY
     Containers::Pair<int, int> a{32, -32};
+    #else
+    Containers::Pair<int, int> a = std::make_pair(32, -32);
+    #endif
     return a.first() + a.second();
 }

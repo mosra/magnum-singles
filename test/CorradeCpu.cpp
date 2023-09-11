@@ -36,17 +36,22 @@ using namespace Corrade;
     https://github.com/mosra/corrade/blob/master/src/Corrade/Test/CpuTest.cpp
 */
 
-auto foo(Cpu::ScalarT) -> int(*)() { return []() { return 42; }; }
+auto fooImplementation(Cpu::ScalarT) -> int(*)() { return []() { return 42; }; }
 #ifdef CORRADE_TARGET_X86
-auto foo(Cpu::AvxT) -> int(*)() { return []() { return 42; }; }
+auto fooImplementation(Cpu::AvxT) -> int(*)() { return []() { return 42; }; }
 #elif defined(CORRADE_TARGET_ARM)
-auto foo(Cpu::NeonT) -> int(*)() { return []() { return 42; }; }
+auto fooImplementation(Cpu::NeonT) -> int(*)() { return []() { return 42; }; }
 #elif defined(CORRADE_TARGET_WASM)
-auto foo(Cpu::Simd128T) -> int(*)() { return []() { return 42; }; }
+auto fooImplementation(Cpu::Simd128T) -> int(*)() { return []() { return 42; }; }
 #endif
 
-CORRADE_CPU_DISPATCHER_BASE(foo)
+CORRADE_CPU_DISPATCHER_BASE(fooImplementation)
+#ifdef CORRADE_CPU_USE_IFUNC
+CORRADE_CPU_DISPATCHED_IFUNC(fooImplementation, int foo())
+#else
+CORRADE_CPU_DISPATCHED_POINTER(fooImplementation, int (*foo)())
+#endif
 
 int main() {
-    return foo(Cpu::runtimeFeatures())() - 42;
+    return foo() - 42;
 }
