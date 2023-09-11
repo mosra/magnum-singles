@@ -75,6 +75,14 @@ jobs:
           ./a.out
           $COMPILE CorradeScopeGuard.cpp
           ./a.out
+          $COMPILE CorradeString.cpp
+          ./a.out
+          $COMPILE CorradeString.cpp -DCORRADE_STRING_STL_COMPATIBILITY
+          ./a.out
+          $COMPILE CorradeString.cpp -DCORRADE_NO_CPU_RUNTIME_DISPATCH
+          ./a.out
+          $COMPILE CorradeString.cpp -DCORRADE_CPU_USE_IFUNC
+          ./a.out
           $COMPILE CorradeTriple.cpp
           ./a.out
           $COMPILE CorradeTriple.cpp -DCORRADE_TRIPLE_STL_COMPATIBILITY
