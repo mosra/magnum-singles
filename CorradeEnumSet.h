@@ -13,6 +13,9 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    v2020.06-1506-g43e1c (2023-09-13)
+    -   Preventing a conflict with the EnumSet declaration in Corrade's
+        Containers.h due to default template arguments being used in both
     v2020.06-1454-gfc3b7 (2023-08-27)
     -   It's now possible to construct the EnumSet directly from the underlying
         enum's type instead of having to cast to the enum type first
@@ -20,7 +23,7 @@
     v2020.06-1075-gdd71 (2022-10-13)
     -   Initial release
 
-    Generated from Corrade v2020.06-1454-gfc3b7 (2023-08-27), 260 / 1705 LoC
+    Generated from Corrade v2020.06-1506-g43e1c (2023-09-13), 265 / 1705 LoC
 */
 
 /*
@@ -55,7 +58,9 @@
 #define CorradeEnumSet_h
 namespace Corrade { namespace Containers {
 
+#ifndef Corrade_Containers_Containers_h
 template<class T, typename std::underlying_type<T>::type fullValue = typename std::underlying_type<T>::type(~0)> class EnumSet;
+#endif
 
 }}
 #endif

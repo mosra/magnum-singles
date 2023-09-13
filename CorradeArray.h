@@ -17,6 +17,9 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    v2020.06-1506-g43e1c (2023-09-13)
+    -   Preventing a conflict with the Array declaration in Corrade's
+        Containers.h due to default template arguments being used in both
     v2020.06-1454-gfc3b7 (2023-08-27)
     -   New exceptPrefix() API, the except() API is renamed to exceptSuffix().
         The suffix() API, which took an offset, is removed and will be
@@ -53,7 +56,7 @@
     v2019.01-47-g524c127e (2019-02-18)
     -   Initial release
 
-    Generated from Corrade v2020.06-1454-gfc3b7 (2023-08-27), 890 / 2669 LoC
+    Generated from Corrade v2020.06-1506-g43e1c (2023-09-13), 895 / 2671 LoC
 */
 
 /*
@@ -103,7 +106,9 @@
 #define CorradeArray_h
 namespace Corrade { namespace Containers {
 
+#ifndef Corrade_Containers_Containers_h
 template<class T, class = void(*)(T*, std::size_t)> class Array;
+#endif
 template<std::size_t, class> class StaticArray;
 template<class T> using Array2 = StaticArray<2, T>;
 template<class T> using Array3 = StaticArray<3, T>;
