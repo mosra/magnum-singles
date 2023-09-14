@@ -31,6 +31,17 @@
 using namespace Corrade;
 using namespace Corrade::Containers::Literals;
 
+/*
+    Does this look funny? That's DEFINITELY NOT how testing should look, right?
+    True dat. The actual tests, with >99% code coverage, are done in the Magnum
+    project itself, because there's much better tooling for that. Have a look:
+    https://github.com/mosra/corrade/blob/master/src/Corrade/Containers/Test/StringTest.cpp
+    https://github.com/mosra/corrade/blob/master/src/Corrade/Containers/Test/StringStlTest.cpp
+    https://github.com/mosra/corrade/blob/master/src/Corrade/Containers/Test/StringStlViewTest.cpp
+    https://github.com/mosra/corrade/blob/master/src/Corrade/Containers/Test/StringViewTest.cpp
+    https://github.com/mosra/corrade/blob/master/src/Corrade/Containers/Test/StringViewBenchmark.cpp
+*/
+
 int main() {
     /* The character lookup delegates to an AVX/SSE, NEON or WASM variant */
     return Containers::String{"hello"_s}.contains('l') ? 0 : 1;
