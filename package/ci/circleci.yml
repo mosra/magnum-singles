@@ -39,6 +39,8 @@ jobs:
     - checkout
     - run:
         # TODO add testing of C++17, C++20 features once such compiler is here
+        # TODO test growable array sanitizer annotations on a compiler that
+        #   actually has __sanitizer_annotate_contiguous_container
         # TODO test also Math GLM and Eigen opt-in
         name: Build all singles
         command: |
@@ -56,6 +58,10 @@ jobs:
           $COMPILE CorradeStridedArrayView.cpp
           ./a.out
           $COMPILE CorradeArray.cpp
+          ./a.out
+          $COMPILE CorradeGrowableArray.cpp
+          ./a.out
+          $COMPILE CorradeGrowableArray.cpp -fsanitize=address -DCORRADE_CONTAINERS_NO_SANITIZER_ANNOTATIONS
           ./a.out
           $COMPILE CorradeEnumSet.cpp
           ./a.out
