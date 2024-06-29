@@ -13,16 +13,21 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
-    The STL compatibility bits are included as well --- opt-in by specifying
+    Structured bindings on C++17 are opt-in due to reliance on a potentially
+    heavy STL header --- `#define CORRADE_STRUCTURED_BINDINGS` before including
+    the file. The STL compatibility bits are included as well --- opt-in with
     `#define CORRADE_PAIR_STL_COMPATIBILITY` before including the file.
     Including it multiple times with different macros defined works too.
 
+    v2020.06-1687-g6b5f (2024-06-29)
+    -   Added explicit conversion constructors
+    -   Structured bindings on C++17
     v2020.06-1502-g147e (2023-09-11)
     -   Fixes to the Utility::swap() helper to avoid ambiguity with std::swap()
     v2020.06-1454-gfc3b7 (2023-08-27)
     -   Initial release
 
-    Generated from Corrade v2020.06-1502-g147e (2023-09-11), 303 / 1723 LoC
+    Generated from Corrade v2020.06-1687-g6b5f (2024-06-29), 420 / 1745 LoC
 */
 
 /*
@@ -31,6 +36,7 @@
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
                 2017, 2018, 2019, 2020, 2021, 2022, 2023
               Vladimír Vondruš <mosra@centrum.cz>
+    Copyright © 2022 Stanislaw Halik <sthalik@misaki.pl>
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the "Software"),
@@ -51,6 +57,7 @@
     DEALINGS IN THE SOFTWARE.
 */
 
+#include <cstddef>
 #include <type_traits>
 
 #if defined(_MSC_VER) && _MSC_VER < 1910
@@ -222,6 +229,22 @@ template<class F, class S> class Pair {
             #endif
             {}
 
+        template<class OtherF, class OtherS, class = typename std::enable_if<std::is_constructible<F, const OtherF&>::value && std::is_constructible<S, const OtherS&>::value>::type> constexpr explicit Pair(const Pair<OtherF, OtherS>& other) noexcept(std::is_nothrow_constructible<F, const OtherF&>::value && std::is_nothrow_constructible<S, const OtherS&>::value):
+            #if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG) && __GNUC__ < 5
+            _first(F(other._first)), _second(S(other._second))
+            #else
+            _first{F(other._first)}, _second{S(other._second)}
+            #endif
+            {}
+
+        template<class OtherF, class OtherS, class = typename std::enable_if<std::is_constructible<F, OtherF&&>::value && std::is_constructible<S, OtherS&&>::value>::type> constexpr explicit Pair(Pair<OtherF, OtherS>&& other) noexcept(std::is_nothrow_constructible<F, OtherF&&>::value && std::is_nothrow_constructible<S, OtherS&&>::value):
+            #if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG) && __GNUC__ < 5
+            _first(F(Utility::move(other._first))), _second(S(Utility::move(other._second)))
+            #else
+            _first{F(Utility::move(other._first))}, _second{S(Utility::move(other._second))}
+            #endif
+            {}
+
         template<class T, class = decltype(Implementation::PairConverter<F, S, T>::from(std::declval<const T&>()))> /*implicit*/ Pair(const T& other) noexcept(std::is_nothrow_copy_constructible<F>::value && std::is_nothrow_copy_constructible<S>::value): Pair{Implementation::PairConverter<F, S, T>::from(other)} {}
 
         template<class T, class = decltype(Implementation::PairConverter<F, S, T>::from(std::declval<T&&>()))> /*implicit*/ Pair(T&& other) noexcept(std::is_nothrow_move_constructible<F>::value && std::is_nothrow_move_constructible<S>::value): Pair{Implementation::PairConverter<F, S, T>::from(Utility::move(other))} {}
@@ -251,6 +274,29 @@ template<class F, class S> class Pair {
         constexpr const S& second() const & { return _second; }
 
     private:
+        template<class, class> friend class Pair;
+
+        #if CORRADE_CXX_STANDARD > 201402
+        template<std::size_t index, typename std::enable_if<index == 0, F>::type* = nullptr> constexpr friend const F& get(const Pair<F, S>& value) {
+            return value._first;
+        }
+        template<std::size_t index, typename std::enable_if<index == 0, F>::type* = nullptr> CORRADE_CONSTEXPR14 friend F& get(Pair<F, S>& value) {
+            return value._first;
+        }
+        template<std::size_t index, typename std::enable_if<index == 0, F>::type* = nullptr> CORRADE_CONSTEXPR14 friend F&& get(Pair<F, S>&& value) {
+            return Utility::move(value._first);
+        }
+        template<std::size_t index, typename std::enable_if<index == 1, S>::type* = nullptr> constexpr friend const S& get(const Pair<F, S>& value) {
+            return value._second;
+        }
+        template<std::size_t index, typename std::enable_if<index == 1, S>::type* = nullptr> CORRADE_CONSTEXPR14 friend S& get(Pair<F, S>& value) {
+            return value._second;
+        }
+        template<std::size_t index, typename std::enable_if<index == 1, S>::type* = nullptr> CORRADE_CONSTEXPR14 friend S&& get(Pair<F, S>&& value) {
+            return Utility::move(value._second);
+        }
+        #endif
+
         F _first;
         S _second;
 };
@@ -300,4 +346,75 @@ template<class F, class S> struct DeducedPairConverter<std::pair<F, S>>: PairCon
 }}}
 
 #endif
+#endif
+#ifdef CORRADE_STRUCTURED_BINDINGS
+#ifdef _MSC_VER
+#ifdef _MSVC_LANG
+#define CORRADE_CXX_STANDARD _MSVC_LANG
+#else
+#define CORRADE_CXX_STANDARD 201103L
+#endif
+#else
+#define CORRADE_CXX_STANDARD __cplusplus
+#endif
+#if CORRADE_CXX_STANDARD >= 202002
+#include <version>
+#else
+#include <ciso646>
+#endif
+#ifdef _LIBCPP_VERSION
+#define CORRADE_TARGET_LIBCXX
+#elif defined(_CPPLIB_VER)
+#define CORRADE_TARGET_DINKUMWARE
+#elif defined(__GLIBCXX__)
+#define CORRADE_TARGET_LIBSTDCXX
+#elif defined(__has_include)
+    #if __has_include(<bits/c++config.h>)
+        #include <bits/c++config.h>
+        #ifdef __GLIBCXX__
+        #define CORRADE_TARGET_LIBSTDCXX
+        #endif
+    #endif
+#elif defined(__GNUC__) && !defined(__clang__) && __GNUC__ < 5
+#define CORRADE_TARGET_LIBSTDCXX
+#else
+#endif
+#ifndef Corrade_Utility_StlForwardTupleSizeElement_h
+#define Corrade_Utility_StlForwardTupleSizeElement_h
+
+#ifdef CORRADE_TARGET_LIBCXX
+    _LIBCPP_BEGIN_NAMESPACE_STD
+#elif defined(CORRADE_TARGET_LIBSTDCXX)
+    #include <bits/c++config.h>
+    namespace std _GLIBCXX_VISIBILITY(default) { _GLIBCXX_BEGIN_NAMESPACE_VERSION
+#elif defined(CORRADE_TARGET_DINKUMWARE)
+    _STD_BEGIN
+#endif
+
+#if defined(CORRADE_TARGET_LIBCXX) || defined(CORRADE_TARGET_LIBSTDCXX) || defined(CORRADE_TARGET_DINKUMWARE)
+    template<size_t, class> struct tuple_element;
+    template<class> struct tuple_size;
+#else
+    #include <utility>
+#endif
+
+#ifdef CORRADE_TARGET_LIBCXX
+    _LIBCPP_END_NAMESPACE_STD
+#elif defined(CORRADE_TARGET_LIBSTDCXX)
+    _GLIBCXX_END_NAMESPACE_VERSION }
+#elif defined CORRADE_TARGET_MSVC
+    _STD_END
+#endif
+
+#endif
+namespace std {
+
+#ifndef Corrade_Containers_StructuredBindings_Pair_h
+#define Corrade_Containers_StructuredBindings_Pair_h
+template<class F, class S> struct tuple_size<Corrade::Containers::Pair<F, S>>: integral_constant<size_t, 2> {};
+template<class F, class S> struct tuple_element<0, Corrade::Containers::Pair<F, S>> { typedef F type; };
+template<class F, class S> struct tuple_element<1, Corrade::Containers::Pair<F, S>> { typedef S type; };
+#endif
+
+}
 #endif

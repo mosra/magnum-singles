@@ -15,11 +15,15 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
-    The STL compatibility bits are included as well --- opt-in by specifying
-    either `#define CORRADE_ARRAYVIEW_STL_COMPATIBILITY` or
+    Structured bindings for StaticArrayView on C++17 are opt-in due to reliance
+    on a potentially heavy STL header --- `#define CORRADE_STRUCTURED_BINDINGS`
+    before including the file. The STL compatibility bits are included as well
+    --- opt-in with either `#define CORRADE_ARRAYVIEW_STL_COMPATIBILITY` or
     `#define CORRADE_ARRAYVIEW_STL_SPAN_COMPATIBILITY` before including the
     file. Including it multiple times with different macros defined works too.
 
+    v2020.06-1687-g6b5f (2024-06-29)
+    -   Structured bindings for StaticArrayView on C++17
     v2020.06-1502-g147e (2023-09-11)
     -   Fixes to the Utility::swap() helper to avoid ambiguity with std::swap()
     v2020.06-1454-gfc3b7 (2023-08-27)
@@ -61,7 +65,7 @@
     v2019.01-41-g39c08d7c (2019-02-18)
     -   Initial release
 
-    Generated from Corrade v2020.06-1502-g147e (2023-09-11), 848 / 2025 LoC
+    Generated from Corrade v2020.06-1687-g6b5f (2024-06-29), 914 / 2026 LoC
 */
 
 /*
@@ -70,6 +74,7 @@
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
                 2017, 2018, 2019, 2020, 2021, 2022, 2023
               Vladimír Vondruš <mosra@centrum.cz>
+    Copyright © 2022 Stanislaw Halik <sthalik@misaki.pl>
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the "Software"),
@@ -102,6 +107,39 @@
 #endif
 #if defined(_MSC_VER) && _MSC_VER < 1910
 #define CORRADE_MSVC2015_COMPATIBILITY
+#endif
+
+#ifdef _MSC_VER
+#ifdef _MSVC_LANG
+#define CORRADE_CXX_STANDARD _MSVC_LANG
+#else
+#define CORRADE_CXX_STANDARD 201103L
+#endif
+#else
+#define CORRADE_CXX_STANDARD __cplusplus
+#endif
+
+#if CORRADE_CXX_STANDARD >= 202002
+#include <version>
+#else
+#include <ciso646>
+#endif
+#ifdef _LIBCPP_VERSION
+#define CORRADE_TARGET_LIBCXX
+#elif defined(_CPPLIB_VER)
+#define CORRADE_TARGET_DINKUMWARE
+#elif defined(__GLIBCXX__)
+#define CORRADE_TARGET_LIBSTDCXX
+#elif defined(__has_include)
+    #if __has_include(<bits/c++config.h>)
+        #include <bits/c++config.h>
+        #ifdef __GLIBCXX__
+        #define CORRADE_TARGET_LIBSTDCXX
+        #endif
+    #endif
+#elif defined(__GNUC__) && !defined(__clang__) && __GNUC__ < 5
+#define CORRADE_TARGET_LIBSTDCXX
+#else
 #endif
 
 #ifndef CorradeArrayView_h
@@ -564,6 +602,12 @@ template<std::size_t size_, class T> class StaticArrayView {
         }
 
     private:
+        #if CORRADE_CXX_STANDARD > 201402
+        template<std::size_t index> constexpr friend T& get(StaticArrayView<size_, T> value) {
+            return value._data[index];
+        }
+        #endif
+
         T* _data;
 };
 
@@ -690,12 +734,51 @@ template<class T> template<std::size_t begin_, std::size_t end_> constexpr Stati
 
 template<std::size_t size_, class T> template<std::size_t begin_, std::size_t end_> constexpr StaticArrayView<end_ - begin_, T> StaticArrayView<size_, T>::slice() const {
     static_assert(begin_ < end_, "fixed-size slice needs to have a positive size");
-    static_assert(end_ <= size_, "slice out of bounds");
+    static_assert(end_ <= size_, "slice out of range");
     return StaticArrayView<end_ - begin_, T>{_data + begin_};
 }
 
 }}
 
+#endif
+#ifdef CORRADE_STRUCTURED_BINDINGS
+#ifndef Corrade_Utility_StlForwardTupleSizeElement_h
+#define Corrade_Utility_StlForwardTupleSizeElement_h
+
+#ifdef CORRADE_TARGET_LIBCXX
+    _LIBCPP_BEGIN_NAMESPACE_STD
+#elif defined(CORRADE_TARGET_LIBSTDCXX)
+    #include <bits/c++config.h>
+    namespace std _GLIBCXX_VISIBILITY(default) { _GLIBCXX_BEGIN_NAMESPACE_VERSION
+#elif defined(CORRADE_TARGET_DINKUMWARE)
+    _STD_BEGIN
+#endif
+
+#if defined(CORRADE_TARGET_LIBCXX) || defined(CORRADE_TARGET_LIBSTDCXX) || defined(CORRADE_TARGET_DINKUMWARE)
+    template<size_t, class> struct tuple_element;
+    template<class> struct tuple_size;
+#else
+    #include <utility>
+#endif
+
+#ifdef CORRADE_TARGET_LIBCXX
+    _LIBCPP_END_NAMESPACE_STD
+#elif defined(CORRADE_TARGET_LIBSTDCXX)
+    _GLIBCXX_END_NAMESPACE_VERSION }
+#elif defined CORRADE_TARGET_MSVC
+    _STD_END
+#endif
+
+#endif
+namespace std {
+
+#ifndef Corrade_Containers_StructuredBindings_StaticArrayView_h
+#define Corrade_Containers_StructuredBindings_StaticArrayView_h
+template<size_t size_, class T> struct tuple_size<Corrade::Containers::StaticArrayView<size_, T>>: integral_constant<size_t, size_> {};
+template<size_t index, size_t size_, class T> struct tuple_element<index, Corrade::Containers::StaticArrayView<size_, T>> { typedef T type; };
+#endif
+
+}
 #endif
 #ifdef CORRADE_ARRAYVIEW_STL_COMPATIBILITY
 #include <array>
@@ -756,23 +839,6 @@ template<std::size_t size, class T> struct ErasedStaticArrayViewConverter<const 
 #endif
 #ifdef CORRADE_ARRAYVIEW_STL_SPAN_COMPATIBILITY
 #include <span>
-#ifdef _MSC_VER
-#ifdef _MSVC_LANG
-#define CORRADE_CXX_STANDARD _MSVC_LANG
-#else
-#define CORRADE_CXX_STANDARD 201103L
-#endif
-#else
-#define CORRADE_CXX_STANDARD __cplusplus
-#endif
-#if CORRADE_CXX_STANDARD > 201703
-#include <version>
-#else
-#include <ciso646>
-#endif
-#ifdef _LIBCPP_VERSION
-#define CORRADE_TARGET_LIBCXX
-#endif
 #ifndef Corrade_Containers_ArrayViewStlSpan_h
 #define Corrade_Containers_ArrayViewStlSpan_h
 

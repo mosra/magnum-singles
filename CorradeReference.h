@@ -17,6 +17,8 @@
     `#define CORRADE_REFERENCE_STL_COMPATIBILITY` before including the file.
     Including it multiple times with different macros defined works too.
 
+    v2020.06-1687-g6b5f (2024-06-29)
+    -   Added a reference() helper for convenient construction
     v2020.06-1459-g65d9b (2023-08-28)
     -   Fixed a copypaste error in the STL compatibility opt-in macro
     v2020.06-1454-gfc3b7 (2023-08-27)
@@ -28,7 +30,7 @@
     v2018.10-183-g4eb1adc0 (2019-01-23)
     -   Initial release
 
-    Generated from Corrade v2020.06-1459-g65d9b (2023-08-28), 125 / 1627 LoC
+    Generated from Corrade v2020.06-1687-g6b5f (2024-06-29), 131 / 1630 LoC
 */
 
 /*
@@ -98,6 +100,10 @@ template<class T> class Reference {
 
         T* _reference;
 };
+
+template<class T> constexpr Reference<T> reference(T& reference) {
+    return Reference<T>{reference};
+}
 
 }}
 
