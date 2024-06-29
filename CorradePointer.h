@@ -17,6 +17,12 @@
     `#define CORRADE_POINTER_STL_COMPATIBILITY` before including the file.
     Including it multiple times with different macros defined works too.
 
+    v2020.06-1687-g6b5f (2024-06-29)
+    -   Deleting pointers to incomplete types is now disallowed to prevent
+        resource leaks
+    -   Conversion to non-trivial and non-virtual bases is now disallowed as
+        doing so would no longer call the derived constructor, causing resource
+        leaks
     v2020.06-1502-g147e (2023-09-11)
     -   Fixes to the Utility::swap() helper to avoid ambiguity with std::swap()
     v2020.06-1454-gfc3b7 (2023-08-27)
@@ -38,7 +44,7 @@
     v2018.10-183-g4eb1adc0 (2019-01-23)
     -   Initial release
 
-    Generated from Corrade v2020.06-1502-g147e (2023-09-11), 361 / 1773 LoC
+    Generated from Corrade v2020.06-1687-g6b5f (2024-06-29), 381 / 1786 LoC
 */
 
 /*
@@ -204,6 +210,13 @@ namespace Implementation {
         return new T(Utility::move(b));
     }
     #endif
+
+    namespace { template<class T> class IsComplete {
+        template<class U> static char get(U*, decltype(sizeof(U))* = nullptr);
+        static short get(...);
+        public:
+            enum: bool { value = sizeof(get(static_cast<T*>(nullptr))) == sizeof(char) };
+    }; }
 }
 
 template<class T> class Pointer {
@@ -222,7 +235,9 @@ template<class T> class Pointer {
             Implementation::allocate<T>(Utility::forward<Args>(args)...)
         } {}
 
-        template<class U, class = typename std::enable_if<std::is_base_of<T, U>::value>::type> /*implicit*/ Pointer(Pointer<U>&& other) noexcept: _pointer{other.release()} {}
+        template<class U, class = typename std::enable_if<std::is_base_of<T, U>::value>::type> /*implicit*/ Pointer(Pointer<U>&& other) noexcept: _pointer{other.release()} {
+            static_assert(std::is_trivially_destructible<U>::value || std::has_virtual_destructor<T>::value, "the derived type should be trivially destructible or the base type should have a virtual destructor");
+        }
 
         template<class U, class = decltype(Implementation::PointerConverter<T, U>::from(std::declval<U&&>()))> /*implicit*/ Pointer(U&& other) noexcept: Pointer{Implementation::PointerConverter<T, U>::from(Utility::move(other))} {}
 
@@ -247,7 +262,10 @@ template<class T> class Pointer {
 
         bool operator!=(std::nullptr_t) const { return _pointer; }
 
-        ~Pointer() { delete _pointer; }
+        ~Pointer() {
+            static_assert(Implementation::IsComplete<T>::value, "attempting to delete a pointer to an incomplete type");
+            delete _pointer;
+        }
 
         explicit operator bool() const { return _pointer; }
 
@@ -275,6 +293,7 @@ template<class T> class Pointer {
         }
 
         void reset(T* pointer = nullptr) {
+            static_assert(Implementation::IsComplete<T>::value, "attempting to delete a pointer to an incomplete type");
             delete _pointer;
             _pointer = pointer;
         }
@@ -286,6 +305,7 @@ template<class T> class Pointer {
         }
 
         template<class U, class ...Args> U& emplace(Args&&... args) {
+            static_assert(std::is_trivially_destructible<U>::value || std::has_virtual_destructor<T>::value, "the derived type should be trivially destructible or the base type should have a virtual destructor");
             delete _pointer;
             U* const derived = Implementation::allocate<U>(Utility::forward<Args>(args)...);
             _pointer = derived;

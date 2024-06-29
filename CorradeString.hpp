@@ -38,10 +38,16 @@
     in both the headers and the implementation. Including it multiple times
     with different macros defined works too.
 
+    v2020.06-1687-g6b5f (2024-06-29)
+    -   New, SIMD-optimized count() API
+    -   Literals are now available in an inline Literals::StringLiterals
+        namespace for finer control over which literals get actually used
+    -   String copy construction and copy assignment now makes the copy a SSO
+        only if the original instance was a SSO as well
     v2020.06-1502-g147e (2023-09-11)
     -   Initial release
 
-    Generated from Corrade v2020.06-1502-g147e (2023-09-11), 2258 / 2183 LoC
+    Generated from Corrade v2020.06-1687-g6b5f (2024-06-29), 2515 / 2192 LoC
 */
 
 /*
@@ -80,6 +86,9 @@
 
 #ifdef _MSC_VER
 #define CORRADE_TARGET_MSVC
+#endif
+#if !defined(__x86_64) && !defined(_M_X64) && !defined(__aarch64__) && !defined(_M_ARM64) && !defined(__powerpc64__) && !defined(__wasm64__)
+#define CORRADE_TARGET_32BIT
 #endif
 #ifdef __BYTE_ORDER__
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
@@ -233,9 +242,11 @@ BasicStringView {
 
         constexpr /*implicit*/ BasicStringView() noexcept: _data{}, _sizePlusFlags{std::size_t(StringViewFlag::Global)} {}
 
-        constexpr /*implicit*/ BasicStringView(T* data, std::size_t size, StringViewFlags flags = {}) noexcept: _data{data}, _sizePlusFlags{
-            (CORRADE_CONSTEXPR_DEBUG_ASSERT(size < std::size_t{1} << (sizeof(std::size_t)*8 - 2),
+        constexpr /*implicit*/ BasicStringView(T* data, std::size_t size, StringViewFlags flags = {}) noexcept: _data{data}, _sizePlusFlags{(
+            #ifdef CORRADE_TARGET_32BIT
+            CORRADE_CONSTEXPR_DEBUG_ASSERT(size < std::size_t{1} << (sizeof(std::size_t)*8 - 2),
                 "Containers::StringView: string expected to be smaller than 2^" << Utility::Debug::nospace << sizeof(std::size_t)*8 - 2 << "bytes, got" << size),
+            #endif
             CORRADE_CONSTEXPR_DEBUG_ASSERT(data || !(flags & StringViewFlag::NullTerminated),
                 "Containers::StringView: can't use StringViewFlag::NullTerminated with null data"),
             size|(std::size_t(flags) & Implementation::StringViewSizeMask))} {}
@@ -390,6 +401,8 @@ BasicStringView {
 
         bool containsAny(StringView substring) const;
 
+        std::size_t count(char character) const;
+
     private:
         template<class> friend class BasicStringView;
         friend String;
@@ -434,12 +447,21 @@ CORRADE_UTILITY_EXPORT String operator*(StringView string, std::size_t count);
 CORRADE_UTILITY_EXPORT String operator*(std::size_t count, StringView string);
 
 namespace Literals {
+    inline
+    namespace StringLiterals {
 
+#if defined(CORRADE_TARGET_CLANG) && __clang_major__ >= 17
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-literal-operator"
+#endif
 constexpr StringView operator"" _s(const char* data, std::size_t size) {
     return StringView{data, size, StringViewFlag(std::size_t(StringViewFlag::Global)|std::size_t(StringViewFlag::NullTerminated))};
 }
+#if defined(CORRADE_TARGET_CLANG) && __clang_major__ >= 17
+#pragma clang diagnostic pop
+#endif
 
-}
+}}
 
 template<class T> constexpr T& BasicStringView<T>::operator[](const std::size_t i) const {
     return CORRADE_CONSTEXPR_DEBUG_ASSERT(i < size() + (flags() & StringViewFlag::NullTerminated ? 1 : 0),
@@ -493,6 +515,8 @@ CORRADE_UTILITY_EXPORT const char* stringFindAny(const char* data, std::size_t s
 CORRADE_UTILITY_EXPORT const char* stringFindLastAny(const char* data, std::size_t size, const char* characters, std::size_t characterCount);
 CORRADE_UTILITY_EXPORT const char* stringFindNotAny(const char* data, std::size_t size, const char* characters, std::size_t characterCount);
 CORRADE_UTILITY_EXPORT const char* stringFindLastNotAny(const char* data, std::size_t size, const char* characters, std::size_t characterCount);
+CORRADE_UTILITY_EXPORT extern std::size_t CORRADE_UTILITY_CPU_DISPATCHED_DECLARATION(stringCountCharacter)(const char* data, std::size_t size, char character);
+CORRADE_UTILITY_CPU_DISPATCHER_DECLARATION(stringCountCharacter)
 
 }
 
@@ -561,6 +585,10 @@ template<class T> inline BasicStringView<T> BasicStringView<T>::findLastAnyOr(co
 
 template<class T> inline bool BasicStringView<T>::containsAny(const StringView characters) const {
     return Implementation::stringFindAny(_data, size(), characters._data, characters.size());
+}
+
+template<class T> inline std::size_t BasicStringView<T>::count(const char character) const {
+    return Implementation::stringCountCharacter(_data, size(), character);
 }
 
 }}
@@ -797,6 +825,8 @@ class CORRADE_UTILITY_EXPORT String {
 
         bool containsAny(StringView substring) const;
 
+        std::size_t count(char character) const;
+
         char* release();
 
     private:
@@ -805,6 +835,7 @@ class CORRADE_UTILITY_EXPORT String {
 
         CORRADE_UTILITY_LOCAL void construct(Corrade::NoInitT, std::size_t size);
         CORRADE_UTILITY_LOCAL void construct(const char* data, std::size_t size);
+        CORRADE_UTILITY_LOCAL void copyConstruct(const String& other);
         CORRADE_UTILITY_LOCAL void destruct();
         CORRADE_UTILITY_LOCAL Pair<const char*, std::size_t> dataInternal() const;
 
@@ -958,8 +989,11 @@ template<> struct StringViewConverter<char, std::string_view> {
 #include "CorradePair.h"
 #include "CorradeCpu.hpp"
 
-#if (defined(CORRADE_ENABLE_SSE2) || defined(CORRADE_ENABLE_AVX)) && defined(CORRADE_ENABLE_BMI1)
+#if ((defined(CORRADE_ENABLE_SSE2) || defined(CORRADE_ENABLE_AVX)) && defined(CORRADE_ENABLE_BMI1)) || (defined(CORRADE_ENABLE_AVX) && defined(CORRADE_ENABLE_POPCNT))
 #include <immintrin.h>
+#elif defined(CORRADE_ENABLE_SSE2) && defined(CORRADE_ENABLE_POPCNT)
+#include <smmintrin.h>
+#include <nmmintrin.h>
 #endif
 #ifdef CORRADE_ENABLE_NEON
 #include <arm_neon.h>
@@ -1013,6 +1047,7 @@ template<class T> constexpr T abs(T a) {
 
 #if (defined(CORRADE_BUILD_CPU_RUNTIME_DISPATCH) && !defined(CORRADE_CPU_USE_IFUNC))
     #define CORRADE_UTILITY_CPU_DISPATCHER(...) CORRADE_CPU_DISPATCHER(__VA_ARGS__)
+    #define CORRADE_UTILITY_CPU_DISPATCHER_BASE(...) CORRADE_CPU_DISPATCHER_BASE(__VA_ARGS__)
     #define CORRADE_UTILITY_CPU_DISPATCHED(dispatcher, ...)                 \
         CORRADE_CPU_DISPATCHED_POINTER(dispatcher, __VA_ARGS__) CORRADE_NOOP
     #define CORRADE_UTILITY_CPU_MAYBE_UNUSED
@@ -1020,11 +1055,14 @@ template<class T> constexpr T abs(T a) {
     #if defined(CORRADE_BUILD_CPU_RUNTIME_DISPATCH) && defined(CORRADE_CPU_USE_IFUNC)
         #define CORRADE_UTILITY_CPU_DISPATCHER(...)                         \
             namespace { CORRADE_CPU_DISPATCHER(__VA_ARGS__) }
+        #define CORRADE_UTILITY_CPU_DISPATCHER_BASE(...)                    \
+            namespace { CORRADE_CPU_DISPATCHER_BASE(__VA_ARGS__) }
         #define CORRADE_UTILITY_CPU_DISPATCHED(dispatcher, ...)             \
             CORRADE_CPU_DISPATCHED_IFUNC(dispatcher, __VA_ARGS__) CORRADE_NOOP
         #define CORRADE_UTILITY_CPU_MAYBE_UNUSED
     #elif !defined(CORRADE_BUILD_CPU_RUNTIME_DISPATCH)
         #define CORRADE_UTILITY_CPU_DISPATCHER(...)
+        #define CORRADE_UTILITY_CPU_DISPATCHER_BASE(...)
         #define CORRADE_UTILITY_CPU_DISPATCHED(dispatcher, ...)             \
             __VA_ARGS__ CORRADE_PASSTHROUGH
         #define CORRADE_UTILITY_CPU_MAYBE_UNUSED CORRADE_UNUSED
@@ -1079,25 +1117,8 @@ const char* stringFindLastString(const char* const data, const std::size_t size,
 namespace {
 
 #if defined(CORRADE_ENABLE_SSE2) && defined(CORRADE_ENABLE_BMI1)
-CORRADE_ENABLE(SSE2,BMI1) CORRADE_ALWAYS_INLINE const char* findCharacterSingleVectorUnaligned(Cpu::Sse2T, const char* at, const __m128i vn1) {
-    const __m128i chunk = _mm_loadu_si128(reinterpret_cast<const __m128i*>(at));
-    if(const int mask = _mm_movemask_epi8(_mm_cmpeq_epi8(chunk, vn1)))
-        return at + _tzcnt_u32(mask);
-    return {};
-}
-CORRADE_ENABLE(SSE2,BMI1) CORRADE_ALWAYS_INLINE const char* findCharacterSingleVector(Cpu::Sse2T, const char* at, const __m128i vn1) {
-    CORRADE_INTERNAL_DEBUG_ASSERT(reinterpret_cast<std::uintptr_t>(at) % 16 == 0);
-
-    const __m128i chunk = _mm_load_si128(reinterpret_cast<const __m128i*>(at));
-    if(const int mask = _mm_movemask_epi8(_mm_cmpeq_epi8(chunk, vn1)))
-        return at + _tzcnt_u32(mask);
-    return {};
-}
-
 CORRADE_UTILITY_CPU_MAYBE_UNUSED CORRADE_ENABLE(SSE2,BMI1) typename std::decay<decltype(stringFindCharacter)>::type stringFindCharacterImplementation(CORRADE_CPU_DECLARE(Cpu::Sse2|Cpu::Bmi1)) {
   return [](const char* const data, const std::size_t size, const char character) CORRADE_ENABLE(SSE2,BMI1) {
-    const char* const end = data + size;
-
     {
         const char* j = data;
         switch(size) {
@@ -1122,47 +1143,55 @@ CORRADE_UTILITY_CPU_MAYBE_UNUSED CORRADE_ENABLE(SSE2,BMI1) typename std::decay<d
 
     const __m128i vn1 = _mm_set1_epi8(character);
 
-    if(const char* const found = findCharacterSingleVectorUnaligned(Cpu::Sse2, data, vn1))
-        return found;
+    {
+        const __m128i chunk = _mm_loadu_si128(reinterpret_cast<const __m128i*>(data));
+        if(const int mask = _mm_movemask_epi8(_mm_cmpeq_epi8(chunk, vn1)))
+            return data + _tzcnt_u32(mask);
+    }
 
     const char* i = reinterpret_cast<const char*>(reinterpret_cast<std::uintptr_t>(data + 16) & ~0xf);
-    CORRADE_INTERNAL_DEBUG_ASSERT(i >= data && reinterpret_cast<std::uintptr_t>(i) % 16 == 0);
+    CORRADE_INTERNAL_DEBUG_ASSERT(i > data && reinterpret_cast<std::uintptr_t>(i) % 16 == 0);
 
-    for(; i + 4*16 < end; i += 4*16) {
+    const char* const end = data + size;
+    for(; i + 4*16 <= end; i += 4*16) {
         const __m128i a = _mm_load_si128(reinterpret_cast<const __m128i*>(i) + 0);
         const __m128i b = _mm_load_si128(reinterpret_cast<const __m128i*>(i) + 1);
         const __m128i c = _mm_load_si128(reinterpret_cast<const __m128i*>(i) + 2);
         const __m128i d = _mm_load_si128(reinterpret_cast<const __m128i*>(i) + 3);
 
-        const __m128i eqa = _mm_cmpeq_epi8(vn1, a);
-        const __m128i eqb = _mm_cmpeq_epi8(vn1, b);
-        const __m128i eqc = _mm_cmpeq_epi8(vn1, c);
-        const __m128i eqd = _mm_cmpeq_epi8(vn1, d);
+        const __m128i eqA = _mm_cmpeq_epi8(vn1, a);
+        const __m128i eqB = _mm_cmpeq_epi8(vn1, b);
+        const __m128i eqC = _mm_cmpeq_epi8(vn1, c);
+        const __m128i eqD = _mm_cmpeq_epi8(vn1, d);
 
-        const __m128i or1 = _mm_or_si128(eqa, eqb);
-        const __m128i or2 = _mm_or_si128(eqc, eqd);
+        const __m128i or1 = _mm_or_si128(eqA, eqB);
+        const __m128i or2 = _mm_or_si128(eqC, eqD);
         const __m128i or3 = _mm_or_si128(or1, or2);
         if(_mm_movemask_epi8(or3)) {
-            if(const int mask = _mm_movemask_epi8(eqa))
+            if(const int mask = _mm_movemask_epi8(eqA))
                 return i + 0*16 + _tzcnt_u32(mask);
-            if(const int mask = _mm_movemask_epi8(eqb))
+            if(const int mask = _mm_movemask_epi8(eqB))
                 return i + 1*16 + _tzcnt_u32(mask);
-            if(const int mask = _mm_movemask_epi8(eqc))
+            if(const int mask = _mm_movemask_epi8(eqC))
                 return i + 2*16 + _tzcnt_u32(mask);
-            if(const int mask = _mm_movemask_epi8(eqd))
+            if(const int mask = _mm_movemask_epi8(eqD))
                 return i + 3*16 + _tzcnt_u32(mask);
             CORRADE_INTERNAL_DEBUG_ASSERT_UNREACHABLE();
         }
     }
 
-    for(; i + 16 <= end; i += 16)
-        if(const char* const found = findCharacterSingleVector(Cpu::Sse2, i, vn1))
-            return found;
+    for(; i + 16 <= end; i += 16) {
+        const __m128i chunk = _mm_load_si128(reinterpret_cast<const __m128i*>(i));
+        if(const int mask = _mm_movemask_epi8(_mm_cmpeq_epi8(chunk, vn1)))
+            return i + _tzcnt_u32(mask);
+    }
 
     if(i < end) {
         CORRADE_INTERNAL_DEBUG_ASSERT(i + 16 > end);
         i = end - 16;
-        return findCharacterSingleVectorUnaligned(Cpu::Sse2, i, vn1);
+        const __m128i chunk = _mm_loadu_si128(reinterpret_cast<const __m128i*>(i));
+        if(const int mask = _mm_movemask_epi8(_mm_cmpeq_epi8(chunk, vn1)))
+            return i + _tzcnt_u32(mask);
     }
 
     return static_cast<const char*>(nullptr);
@@ -1171,71 +1200,62 @@ CORRADE_UTILITY_CPU_MAYBE_UNUSED CORRADE_ENABLE(SSE2,BMI1) typename std::decay<d
 #endif
 
 #if defined(CORRADE_ENABLE_AVX2) && defined(CORRADE_ENABLE_BMI1)
-CORRADE_ENABLE(AVX2,BMI1) CORRADE_ALWAYS_INLINE const char* findCharacterSingleVectorUnaligned(Cpu::Avx2T, const char* at, const __m256i vn1) {
-    const __m256i chunk = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(at));
-    if(const int mask = _mm256_movemask_epi8(_mm256_cmpeq_epi8(chunk, vn1)))
-        return at + _tzcnt_u32(mask);
-    return {};
-}
-CORRADE_ENABLE(AVX2,BMI1) CORRADE_ALWAYS_INLINE const char* findCharacterSingleVector(Cpu::Avx2T, const char* at, const __m256i vn1) {
-    CORRADE_INTERNAL_DEBUG_ASSERT(reinterpret_cast<std::uintptr_t>(at) % 32 == 0);
-
-    const __m256i chunk = _mm256_load_si256(reinterpret_cast<const __m256i*>(at));
-    if(const int mask = _mm256_movemask_epi8(_mm256_cmpeq_epi8(chunk, vn1)))
-        return at + _tzcnt_u32(mask);
-    return {};
-}
-
 CORRADE_UTILITY_CPU_MAYBE_UNUSED CORRADE_ENABLE(AVX2,BMI1) typename std::decay<decltype(stringFindCharacter)>::type stringFindCharacterImplementation(CORRADE_CPU_DECLARE(Cpu::Avx2|Cpu::Bmi1)) {
   return [](const char* const data, const std::size_t size, const char character) CORRADE_ENABLE(AVX2,BMI1) {
-    const char* const end = data + size;
-
     if(size < 32)
         return stringFindCharacterImplementation(CORRADE_CPU_SELECT(Cpu::Sse2|Cpu::Bmi1))(data, size, character);
 
     const __m256i vn1 = _mm256_set1_epi8(character);
 
-    if(const char* const found = findCharacterSingleVectorUnaligned(Cpu::Avx2, data, vn1))
-        return found;
+    {
+        const __m256i chunk = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(data));
+        if(const int mask = _mm256_movemask_epi8(_mm256_cmpeq_epi8(chunk, vn1)))
+            return data + _tzcnt_u32(mask);
+    }
 
     const char* i = reinterpret_cast<const char*>(reinterpret_cast<std::uintptr_t>(data + 32) & ~0x1f);
-    CORRADE_INTERNAL_DEBUG_ASSERT(i >= data && reinterpret_cast<std::uintptr_t>(i) % 32 == 0);
+    CORRADE_INTERNAL_DEBUG_ASSERT(i > data && reinterpret_cast<std::uintptr_t>(i) % 32 == 0);
 
-    for(; i + 4*32 < end; i += 4*32) {
+    const char* const end = data + size;
+    for(; i + 4*32 <= end; i += 4*32) {
         const __m256i a = _mm256_load_si256(reinterpret_cast<const __m256i*>(i) + 0);
         const __m256i b = _mm256_load_si256(reinterpret_cast<const __m256i*>(i) + 1);
         const __m256i c = _mm256_load_si256(reinterpret_cast<const __m256i*>(i) + 2);
         const __m256i d = _mm256_load_si256(reinterpret_cast<const __m256i*>(i) + 3);
 
-        const __m256i eqa = _mm256_cmpeq_epi8(vn1, a);
-        const __m256i eqb = _mm256_cmpeq_epi8(vn1, b);
-        const __m256i eqc = _mm256_cmpeq_epi8(vn1, c);
-        const __m256i eqd = _mm256_cmpeq_epi8(vn1, d);
+        const __m256i eqA = _mm256_cmpeq_epi8(vn1, a);
+        const __m256i eqB = _mm256_cmpeq_epi8(vn1, b);
+        const __m256i eqC = _mm256_cmpeq_epi8(vn1, c);
+        const __m256i eqD = _mm256_cmpeq_epi8(vn1, d);
 
-        const __m256i or1 = _mm256_or_si256(eqa, eqb);
-        const __m256i or2 = _mm256_or_si256(eqc, eqd);
+        const __m256i or1 = _mm256_or_si256(eqA, eqB);
+        const __m256i or2 = _mm256_or_si256(eqC, eqD);
         const __m256i or3 = _mm256_or_si256(or1, or2);
         if(_mm256_movemask_epi8(or3)) {
-            if(const int mask = _mm256_movemask_epi8(eqa))
+            if(const int mask = _mm256_movemask_epi8(eqA))
                 return i + 0*32 + _tzcnt_u32(mask);
-            if(const int mask = _mm256_movemask_epi8(eqb))
+            if(const int mask = _mm256_movemask_epi8(eqB))
                 return i + 1*32 + _tzcnt_u32(mask);
-            if(const int mask = _mm256_movemask_epi8(eqc))
+            if(const int mask = _mm256_movemask_epi8(eqC))
                 return i + 2*32 + _tzcnt_u32(mask);
-            if(const int mask = _mm256_movemask_epi8(eqd))
+            if(const int mask = _mm256_movemask_epi8(eqD))
                 return i + 3*32 + _tzcnt_u32(mask);
             CORRADE_INTERNAL_DEBUG_ASSERT_UNREACHABLE();
         }
     }
 
-    for(; i + 32 <= end; i += 32)
-        if(const char* const found = findCharacterSingleVector(Cpu::Avx2, i, vn1))
-            return found;
+    for(; i + 32 <= end; i += 32) {
+        const __m256i chunk = _mm256_load_si256(reinterpret_cast<const __m256i*>(i));
+        if(const int mask = _mm256_movemask_epi8(_mm256_cmpeq_epi8(chunk, vn1)))
+            return i + _tzcnt_u32(mask);
+    }
 
     if(i < end) {
         CORRADE_INTERNAL_DEBUG_ASSERT(i + 32 > end);
         i = end - 32;
-        return findCharacterSingleVectorUnaligned(Cpu::Avx2, i, vn1);
+        const __m256i chunk = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(i));
+        if(const int mask = _mm256_movemask_epi8(_mm256_cmpeq_epi8(chunk, vn1)))
+            return i + _tzcnt_u32(mask);
     }
 
     return static_cast<const char*>(nullptr);
@@ -1243,17 +1263,7 @@ CORRADE_UTILITY_CPU_MAYBE_UNUSED CORRADE_ENABLE(AVX2,BMI1) typename std::decay<d
 }
 #endif
 
-#ifdef CORRADE_ENABLE_NEON
-CORRADE_ENABLE(NEON) CORRADE_ALWAYS_INLINE const char* findCharacterSingleVectorUnaligned(Cpu::NeonT, const char* at, const uint8x16_t vn1) {
-    const uint8x16_t chunk = vld1q_u8(reinterpret_cast<const std::uint8_t*>(at));
-
-    const uint16x8_t eq16 = vreinterpretq_u16_u8(vceqq_u8(chunk, vn1));
-    const uint64x1_t shrn64 = vreinterpret_u64_u8(vshrn_n_u16(eq16, 4));
-    if(const uint64_t mask = vget_lane_u64(shrn64, 0))
-        return at + (__builtin_ctzll(mask) >> 2);
-    return {};
-}
-
+#if defined(CORRADE_ENABLE_NEON) && !defined(CORRADE_TARGET_32BIT)
 CORRADE_UTILITY_CPU_MAYBE_UNUSED CORRADE_ENABLE(NEON) typename std::decay<decltype(stringFindCharacter)>::type stringFindCharacterImplementation(CORRADE_CPU_DECLARE(Cpu::Neon)) {
   return [](const char* const data, const std::size_t size, const char character) CORRADE_ENABLE(NEON) {
     const char* const end = data + size;
@@ -1266,50 +1276,63 @@ CORRADE_UTILITY_CPU_MAYBE_UNUSED CORRADE_ENABLE(NEON) typename std::decay<declty
 
     const uint8x16_t vn1 = vdupq_n_u8(character);
 
-    if(const char* const found = findCharacterSingleVectorUnaligned(Cpu::Neon, data, vn1))
-        return found;
+    {
+        const uint8x16_t chunk = vld1q_u8(reinterpret_cast<const std::uint8_t*>(data));
+
+        const uint16x8_t eq16 = vreinterpretq_u16_u8(vceqq_u8(chunk, vn1));
+        const uint64x1_t shrn64 = vreinterpret_u64_u8(vshrn_n_u16(eq16, 4));
+        if(const uint64_t mask = vget_lane_u64(shrn64, 0))
+            return data + (__builtin_ctzll(mask) >> 2);
+    }
 
     const char* i = reinterpret_cast<const char*>(reinterpret_cast<std::uintptr_t>(data + 16) & ~0xf);
-    CORRADE_INTERNAL_DEBUG_ASSERT(i >= data && reinterpret_cast<std::uintptr_t>(i) % 16 == 0);
+    CORRADE_INTERNAL_DEBUG_ASSERT(i > data && reinterpret_cast<std::uintptr_t>(i) % 16 == 0);
 
-    for(; i + 4*16 < end; i += 4*16) {
+    for(; i + 4*16 <= end; i += 4*16) {
 
         const uint8x16_t a = vld1q_u8(reinterpret_cast<const std::uint8_t*>(i) + 0*16);
         const uint8x16_t b = vld1q_u8(reinterpret_cast<const std::uint8_t*>(i) + 1*16);
         const uint8x16_t c = vld1q_u8(reinterpret_cast<const std::uint8_t*>(i) + 2*16);
         const uint8x16_t d = vld1q_u8(reinterpret_cast<const std::uint8_t*>(i) + 3*16);
 
-        const uint8x16_t eqa = vceqq_u8(vn1, a);
-        const uint8x16_t eqb = vceqq_u8(vn1, b);
-        const uint8x16_t eqc = vceqq_u8(vn1, c);
-        const uint8x16_t eqd = vceqq_u8(vn1, d);
+        const uint8x16_t eqA = vceqq_u8(vn1, a);
+        const uint8x16_t eqB = vceqq_u8(vn1, b);
+        const uint8x16_t eqC = vceqq_u8(vn1, c);
+        const uint8x16_t eqD = vceqq_u8(vn1, d);
 
-        const uint8x8_t maska = vshrn_n_u16(vreinterpretq_u16_u8(eqa), 4);
-        const uint8x16_t maskab = vshrn_high_n_u16(maska, vreinterpretq_u16_u8(eqb), 4);
-        const uint8x8_t maskc = vshrn_n_u16(vreinterpretq_u16_u8(eqc), 4);
-        const uint8x16_t maskcd = vshrn_high_n_u16(maskc, vreinterpretq_u16_u8(eqd), 4);
+        const uint8x8_t maskA = vshrn_n_u16(vreinterpretq_u16_u8(eqA), 4);
+        const uint8x16_t maskAB = vshrn_high_n_u16(maskA, vreinterpretq_u16_u8(eqB), 4);
+        const uint8x8_t maskC = vshrn_n_u16(vreinterpretq_u16_u8(eqC), 4);
+        const uint8x16_t maskCD = vshrn_high_n_u16(maskC, vreinterpretq_u16_u8(eqD), 4);
 
-        if(vaddvq_u8(vorrq_u8(maskab, maskcd))) {
-            if(const std::uint64_t mask = vgetq_lane_u64(vreinterpretq_u64_u8(maskab), 0))
+        if(vaddvq_u8(vorrq_u8(maskAB, maskCD))) {
+            if(const std::uint64_t mask = vgetq_lane_u64(vreinterpretq_u64_u8(maskAB), 0))
                 return i + 0*16 + (__builtin_ctzll(mask) >> 2);
-            if(const std::uint64_t mask = vgetq_lane_u64(vreinterpretq_u64_u8(maskab), 1))
+            if(const std::uint64_t mask = vgetq_lane_u64(vreinterpretq_u64_u8(maskAB), 1))
                 return i + 1*16 + (__builtin_ctzll(mask) >> 2);
-            if(const std::uint64_t mask = vgetq_lane_u64(vreinterpretq_u64_u8(maskcd), 0))
+            if(const std::uint64_t mask = vgetq_lane_u64(vreinterpretq_u64_u8(maskCD), 0))
                 return i + 2*16 + (__builtin_ctzll(mask) >> 2);
-            if(const std::uint64_t mask = vgetq_lane_u64(vreinterpretq_u64_u8(maskcd), 1))
+            if(const std::uint64_t mask = vgetq_lane_u64(vreinterpretq_u64_u8(maskCD), 1))
                 return i + 3*16 + (__builtin_ctzll(mask) >> 2);
             CORRADE_INTERNAL_DEBUG_ASSERT_UNREACHABLE();
         }
     }
 
-    for(; i + 16 <= end; i += 16)
-        if(const char* const found = findCharacterSingleVectorUnaligned(Cpu::Neon, i, vn1))
-            return found;
+    for(; i + 16 <= end; i += 16) {
+        const uint8x16_t chunk = vld1q_u8(reinterpret_cast<const std::uint8_t*>(i));
+        const uint16x8_t eq16 = vreinterpretq_u16_u8(vceqq_u8(chunk, vn1));
+        const uint64x1_t shrn64 = vreinterpret_u64_u8(vshrn_n_u16(eq16, 4));
+        if(const uint64_t mask = vget_lane_u64(shrn64, 0))
+            return i + (__builtin_ctzll(mask) >> 2);
+    }
 
     if(i < end) {
         CORRADE_INTERNAL_DEBUG_ASSERT(i + 16 > end);
-        i = end - 16;
-        return findCharacterSingleVectorUnaligned(Cpu::Neon, i, vn1);
+        const uint8x16_t chunk = vld1q_u8(reinterpret_cast<const std::uint8_t*>(i));
+        const uint16x8_t eq16 = vreinterpretq_u16_u8(vceqq_u8(chunk, vn1));
+        const uint64x1_t shrn64 = vreinterpret_u64_u8(vshrn_n_u16(eq16, 4));
+        if(const uint64_t mask = vget_lane_u64(shrn64, 0))
+            return i + (__builtin_ctzll(mask) >> 2);
     }
 
     return static_cast<const char*>(nullptr);
@@ -1318,17 +1341,8 @@ CORRADE_UTILITY_CPU_MAYBE_UNUSED CORRADE_ENABLE(NEON) typename std::decay<declty
 #endif
 
 #ifdef CORRADE_ENABLE_SIMD128
-CORRADE_ENABLE_SIMD128 CORRADE_ALWAYS_INLINE const char* findCharacterSingleVectorUnaligned(Cpu::Simd128T, const char* at, const v128_t vn1) {
-    const v128_t chunk = wasm_v128_load(at);
-    if(const int mask = wasm_i8x16_bitmask(wasm_i8x16_eq(chunk, vn1)))
-        return at + __builtin_ctz(mask);
-    return {};
-}
-
 CORRADE_UTILITY_CPU_MAYBE_UNUSED typename std::decay<decltype(stringFindCharacter)>::type stringFindCharacterImplementation(CORRADE_CPU_DECLARE(Cpu::Simd128)) {
   return [](const char* const data, const std::size_t size, const char character) CORRADE_ENABLE_SIMD128 -> const char* {
-    const char* const end = data + size;
-
     {
         const char* j = data - 1;
         switch(size) {
@@ -1353,47 +1367,55 @@ CORRADE_UTILITY_CPU_MAYBE_UNUSED typename std::decay<decltype(stringFindCharacte
 
     const v128_t vn1 = wasm_i8x16_splat(character);
 
-    if(const char* const found = findCharacterSingleVectorUnaligned(Cpu::Simd128, data, vn1))
-        return found;
+    {
+        const v128_t chunk = wasm_v128_load(data);
+        if(const int mask = wasm_i8x16_bitmask(wasm_i8x16_eq(chunk, vn1)))
+            return data + __builtin_ctz(mask);
+    }
 
     const char* i = reinterpret_cast<const char*>(reinterpret_cast<std::uintptr_t>(data + 16) & ~0xf);
-    CORRADE_INTERNAL_DEBUG_ASSERT(i >= data && reinterpret_cast<std::uintptr_t>(i) % 16 == 0);
+    CORRADE_INTERNAL_DEBUG_ASSERT(i > data && reinterpret_cast<std::uintptr_t>(i) % 16 == 0);
 
-    for(; i + 4*16 < end; i += 4*16) {
+    const char* const end = data + size;
+    for(; i + 4*16 <= end; i += 4*16) {
         const v128_t a = wasm_v128_load(reinterpret_cast<const v128_t*>(i) + 0);
         const v128_t b = wasm_v128_load(reinterpret_cast<const v128_t*>(i) + 1);
         const v128_t c = wasm_v128_load(reinterpret_cast<const v128_t*>(i) + 2);
         const v128_t d = wasm_v128_load(reinterpret_cast<const v128_t*>(i) + 3);
 
-        const v128_t eqa = wasm_i8x16_eq(vn1, a);
-        const v128_t eqb = wasm_i8x16_eq(vn1, b);
-        const v128_t eqc = wasm_i8x16_eq(vn1, c);
-        const v128_t eqd = wasm_i8x16_eq(vn1, d);
+        const v128_t eqA = wasm_i8x16_eq(vn1, a);
+        const v128_t eqB = wasm_i8x16_eq(vn1, b);
+        const v128_t eqC = wasm_i8x16_eq(vn1, c);
+        const v128_t eqD = wasm_i8x16_eq(vn1, d);
 
-        const v128_t or1 = wasm_v128_or(eqa, eqb);
-        const v128_t or2 = wasm_v128_or(eqc, eqd);
+        const v128_t or1 = wasm_v128_or(eqA, eqB);
+        const v128_t or2 = wasm_v128_or(eqC, eqD);
         const v128_t or3 = wasm_v128_or(or1, or2);
         if(wasm_i8x16_bitmask(or3)) {
-            if(const int mask = wasm_i8x16_bitmask(eqa))
+            if(const int mask = wasm_i8x16_bitmask(eqA))
                 return i + 0*16 + __builtin_ctz(mask);
-            if(const int mask = wasm_i8x16_bitmask(eqb))
+            if(const int mask = wasm_i8x16_bitmask(eqB))
                 return i + 1*16 + __builtin_ctz(mask);
-            if(const int mask = wasm_i8x16_bitmask(eqc))
+            if(const int mask = wasm_i8x16_bitmask(eqC))
                 return i + 2*16 + __builtin_ctz(mask);
-            if(const int mask = wasm_i8x16_bitmask(eqd))
+            if(const int mask = wasm_i8x16_bitmask(eqD))
                 return i + 3*16 + __builtin_ctz(mask);
             CORRADE_INTERNAL_DEBUG_ASSERT_UNREACHABLE();
         }
     }
 
-    for(; i + 16 <= end; i += 16)
-        if(const char* const found = findCharacterSingleVectorUnaligned(Cpu::Simd128, i, vn1))
-            return found;
+    for(; i + 16 <= end; i += 16) {
+        const v128_t chunk = wasm_v128_load(data);
+        if(const int mask = wasm_i8x16_bitmask(wasm_i8x16_eq(chunk, vn1)))
+            return data + __builtin_ctz(mask);
+    }
 
     if(i < end) {
         CORRADE_INTERNAL_DEBUG_ASSERT(i + 16 > end);
         i = end - 16;
-        return findCharacterSingleVectorUnaligned(Cpu::Simd128, i, vn1);
+        const v128_t chunk = wasm_v128_load(i);
+        if(const int mask = wasm_i8x16_bitmask(wasm_i8x16_eq(chunk, vn1)))
+            return i + __builtin_ctz(mask);
     }
 
     return {};
@@ -1447,6 +1469,227 @@ const char* stringFindLastNotAny(const char* const data, const std::size_t size,
         if(!std::memchr(characters, *(i - 1), characterCount)) return i - 1;
     return {};
 }
+
+namespace {
+
+#if defined(CORRADE_ENABLE_SSE2) && defined(CORRADE_ENABLE_POPCNT) && !defined(CORRADE_TARGET_32BIT)
+CORRADE_UTILITY_CPU_MAYBE_UNUSED CORRADE_ENABLE(SSE2,POPCNT) typename std::decay<decltype(stringCountCharacter)>::type stringCountCharacterImplementation(CORRADE_CPU_DECLARE(Cpu::Sse2|Cpu::Popcnt)) {
+  return [](const char* const data, const std::size_t size, const char character) CORRADE_ENABLE(SSE2,POPCNT) {
+    std::size_t count = 0;
+
+    {
+        const char* j = data;
+        switch(size) {
+            case 15: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case 14: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case 13: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case 12: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case 11: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case 10: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case  9: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case  8: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case  7: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case  6: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case  5: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case  4: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case  3: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case  2: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case  1: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case  0: return count;
+        }
+    }
+
+    const __m128i vn1 = _mm_set1_epi8(character);
+
+    const char* i = reinterpret_cast<const char*>(reinterpret_cast<std::uintptr_t>(data + 16) & ~0xf);
+    CORRADE_INTERNAL_DEBUG_ASSERT(i > data && reinterpret_cast<std::uintptr_t>(i) % 16 == 0);
+
+    {
+        const __m128i chunk = _mm_loadu_si128(reinterpret_cast<const __m128i*>(data));
+        const std::uint32_t found = _mm_movemask_epi8(_mm_cmpeq_epi8(chunk, vn1));
+        count += _mm_popcnt_u32(found & ((1 << (i - data)) - 1));
+    }
+
+    const char* const end = data + size;
+    for(; i + 4*16 <= end; i += 4*16) {
+        const __m128i a = _mm_load_si128(reinterpret_cast<const __m128i*>(i) + 0);
+        const __m128i b = _mm_load_si128(reinterpret_cast<const __m128i*>(i) + 1);
+        const __m128i c = _mm_load_si128(reinterpret_cast<const __m128i*>(i) + 2);
+        const __m128i d = _mm_load_si128(reinterpret_cast<const __m128i*>(i) + 3);
+        count += _mm_popcnt_u64(
+            (std::uint64_t(_mm_movemask_epi8(_mm_cmpeq_epi8(a, vn1))) <<  0) |
+            (std::uint64_t(_mm_movemask_epi8(_mm_cmpeq_epi8(b, vn1))) << 16) |
+            (std::uint64_t(_mm_movemask_epi8(_mm_cmpeq_epi8(c, vn1))) << 32) |
+            (std::uint64_t(_mm_movemask_epi8(_mm_cmpeq_epi8(d, vn1))) << 48));
+    }
+
+    if(i + 2*16 <= end) {
+        const __m128i a = _mm_load_si128(reinterpret_cast<const __m128i*>(i) + 0);
+        const __m128i b = _mm_load_si128(reinterpret_cast<const __m128i*>(i) + 1);
+        count += _mm_popcnt_u32(
+            (_mm_movemask_epi8(_mm_cmpeq_epi8(a, vn1)) << 0) |
+            (_mm_movemask_epi8(_mm_cmpeq_epi8(b, vn1)) << 16));
+        i += 2*16;
+    }
+    if(i + 16 <= end) {
+        const __m128i c = _mm_load_si128(reinterpret_cast<const __m128i*>(i));
+        count += _mm_popcnt_u32(_mm_movemask_epi8(_mm_cmpeq_epi8(c, vn1)));
+        i += 16;
+    }
+
+    if(i < end) {
+        CORRADE_INTERNAL_DEBUG_ASSERT(i + 16 > end);
+        const __m128i chunk = _mm_loadu_si128(reinterpret_cast<const __m128i*>(end - 16));
+        const std::uint32_t found = _mm_movemask_epi8(_mm_cmpeq_epi8(chunk, vn1));
+        count += _mm_popcnt_u32(found & ~((1 << (i + 16 - end)) - 1));
+    }
+
+    return count;
+  };
+}
+#endif
+
+#if defined(CORRADE_ENABLE_AVX2) && defined(CORRADE_ENABLE_POPCNT) && !defined(CORRADE_TARGET_32BIT)
+CORRADE_UTILITY_CPU_MAYBE_UNUSED CORRADE_ENABLE(AVX2,POPCNT) typename std::decay<decltype(stringCountCharacter)>::type stringCountCharacterImplementation(CORRADE_CPU_DECLARE(Cpu::Avx2|Cpu::Popcnt)) {
+  return [](const char* const data, const std::size_t size, const char character) CORRADE_ENABLE(AVX2,POPCNT) {
+    if(size < 32)
+        return stringCountCharacterImplementation(CORRADE_CPU_SELECT(Cpu::Sse2|Cpu::Popcnt))(data, size, character);
+
+    std::size_t count = 0;
+    const __m256i vn1 = _mm256_set1_epi8(character);
+
+    const char* i = reinterpret_cast<const char*>(reinterpret_cast<std::uintptr_t>(data + 32) & ~0x1f);
+    CORRADE_INTERNAL_DEBUG_ASSERT(i > data && reinterpret_cast<std::uintptr_t>(i) % 32 == 0);
+
+    {
+        const __m256i chunk = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(data));
+        const std::uint32_t found = _mm256_movemask_epi8(_mm256_cmpeq_epi8(chunk, vn1));
+        count += _mm_popcnt_u32(found & ((1ull << (i - data)) - 1));
+    }
+
+    const char* const end = data + size;
+    for(; i + 2*32 <= end; i += 2*32) {
+        const __m256i a = _mm256_load_si256(reinterpret_cast<const __m256i*>(i) + 0);
+        const __m256i b = _mm256_load_si256(reinterpret_cast<const __m256i*>(i) + 1);
+        count += _mm_popcnt_u64(
+            (std::uint64_t(std::uint32_t(_mm256_movemask_epi8(_mm256_cmpeq_epi8(a, vn1)))) <<  0) |
+            (std::uint64_t(std::uint32_t(_mm256_movemask_epi8(_mm256_cmpeq_epi8(b, vn1)))) << 32));
+    }
+
+    if(i + 32 <= end) {
+        const __m256i chunk = _mm256_load_si256(reinterpret_cast<const __m256i*>(i));
+        count += _mm_popcnt_u32(_mm256_movemask_epi8(_mm256_cmpeq_epi8(chunk, vn1)));
+        i += 32;
+    }
+
+    if(i < end) {
+        CORRADE_INTERNAL_DEBUG_ASSERT(i + 32 > end);
+        const __m256i chunk = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(end - 32));
+        const std::uint32_t found = _mm256_movemask_epi8(_mm256_cmpeq_epi8(chunk, vn1));
+        count += _mm_popcnt_u32(found & ~((1u << (i + 32 - end)) - 1));
+    }
+
+    return count;
+  };
+}
+#endif
+
+#ifdef CORRADE_ENABLE_SIMD128
+CORRADE_UTILITY_CPU_MAYBE_UNUSED CORRADE_ENABLE_SIMD128 typename std::decay<decltype(stringCountCharacter)>::type stringCountCharacterImplementation(CORRADE_CPU_DECLARE(Cpu::Simd128)) {
+  return [](const char* const data, const std::size_t size, const char character) CORRADE_ENABLE_SIMD128 {
+    std::size_t count = 0;
+
+    {
+        const char* j = data;
+        switch(size) {
+            case 15: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case 14: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case 13: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case 12: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case 11: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case 10: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case  9: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case  8: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case  7: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case  6: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case  5: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case  4: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case  3: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case  2: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case  1: if(*j++ == character) ++count; CORRADE_FALLTHROUGH
+            case  0: return count;
+        }
+    }
+
+    const v128_t vn1 = wasm_i8x16_splat(character);
+
+    const char* i = reinterpret_cast<const char*>(reinterpret_cast<std::uintptr_t>(data + 16) & ~0xf);
+    CORRADE_INTERNAL_DEBUG_ASSERT(i > data && reinterpret_cast<std::uintptr_t>(i) % 16 == 0);
+
+    {
+        const v128_t chunk = wasm_v128_load(reinterpret_cast<const v128_t*>(data));
+        const std::uint32_t found = wasm_i8x16_bitmask(wasm_i8x16_eq(chunk, vn1));
+        count += __builtin_popcount(found & ((1 << (i - data)) - 1));
+    }
+
+    const char* const end = data + size;
+    for(; i + 4*16 <= end; i += 4*16) {
+        const v128_t a = wasm_v128_load(reinterpret_cast<const v128_t*>(i) + 0);
+        const v128_t b = wasm_v128_load(reinterpret_cast<const v128_t*>(i) + 1);
+        const v128_t c = wasm_v128_load(reinterpret_cast<const v128_t*>(i) + 2);
+        const v128_t d = wasm_v128_load(reinterpret_cast<const v128_t*>(i) + 3);
+        count += __builtin_popcountll(
+            (std::uint64_t(wasm_i8x16_bitmask(wasm_i8x16_eq(a, vn1))) <<  0) |
+            (std::uint64_t(wasm_i8x16_bitmask(wasm_i8x16_eq(b, vn1))) << 16) |
+            (std::uint64_t(wasm_i8x16_bitmask(wasm_i8x16_eq(c, vn1))) << 32) |
+            (std::uint64_t(wasm_i8x16_bitmask(wasm_i8x16_eq(d, vn1))) << 48));
+    }
+
+    if(i + 2*16 <= end) {
+        const v128_t a = wasm_v128_load(reinterpret_cast<const v128_t*>(i) + 0);
+        const v128_t b = wasm_v128_load(reinterpret_cast<const v128_t*>(i) + 1);
+        count += __builtin_popcount(
+            (wasm_i8x16_bitmask(wasm_i8x16_eq(a, vn1)) << 0) |
+            (wasm_i8x16_bitmask(wasm_i8x16_eq(b, vn1)) << 16));
+        i += 2*16;
+    }
+    if(i + 16 <= end) {
+        const v128_t c = wasm_v128_load(reinterpret_cast<const v128_t*>(i));
+        count += __builtin_popcount(wasm_i8x16_bitmask(wasm_i8x16_eq(c, vn1)));
+        i += 16;
+    }
+
+    if(i < end) {
+        CORRADE_INTERNAL_DEBUG_ASSERT(i + 16 > end);
+        const v128_t chunk = wasm_v128_load(reinterpret_cast<const v128_t*>(end - 16));
+        const std::uint32_t found = wasm_i8x16_bitmask(wasm_i8x16_eq(chunk, vn1));
+        count += __builtin_popcount(found & ~((1 << (i + 16 - end)) - 1));
+    }
+
+    return count;
+  };
+}
+#endif
+
+CORRADE_UTILITY_CPU_MAYBE_UNUSED typename std::decay<decltype(stringCountCharacter)>::type stringCountCharacterImplementation(CORRADE_CPU_DECLARE(Cpu::Scalar)) {
+  return [](const char* const data, const std::size_t size, const char character) -> std::size_t {
+    std::size_t count = 0;
+    for(const char* i = data, *end = data + size; i != end; ++i)
+        if(*i == character) ++count;
+    return count;
+  };
+}
+
+}
+
+#ifdef CORRADE_TARGET_X86
+CORRADE_UTILITY_CPU_DISPATCHER(stringCountCharacterImplementation, Cpu::Popcnt)
+#else
+CORRADE_UTILITY_CPU_DISPATCHER(stringCountCharacterImplementation)
+#endif
+CORRADE_UTILITY_CPU_DISPATCHED(stringCountCharacterImplementation, std::size_t CORRADE_UTILITY_CPU_DISPATCHED_DECLARATION(stringCountCharacter)(const char* data, std::size_t size, char character))({
+    return stringCountCharacterImplementation(CORRADE_CPU_SELECT(Cpu::Default))(data, size, character);
+})
 
 }
 
@@ -1711,8 +1954,10 @@ String::String(std::nullptr_t, std::nullptr_t, std::nullptr_t, const char* const
 
 String::String(const char* const data, const std::size_t size)
 {
+    #ifdef CORRADE_TARGET_32BIT
     CORRADE_ASSERT(size < std::size_t{1} << (sizeof(std::size_t)*8 - 2),
         "Containers::String: string expected to be smaller than 2^" << Utility::Debug::nospace << sizeof(std::size_t)*8 - 2 << "bytes, got" << size, );
+    #endif
     CORRADE_ASSERT(data || !size,
         "Containers::String: received a null string of size" << size, );
 
@@ -1813,9 +2058,21 @@ String::String(Corrade::DirectInitT, const std::size_t size, const char c): Stri
 
 String::~String() { destruct(); }
 
+inline void String::copyConstruct(const String& other) {
+    if(other.isSmall()) {
+        std::memcpy(_small.data, other._small.data, Implementation::SmallStringSize);
+        _small.size = other._small.size;
+    } else {
+        const std::size_t size = other._large.size & ~LargeSizeMask;
+        _large.data = new char[size + 1];
+        std::memcpy(_large.data, other._large.data, size + 1);
+        _large.size = size;
+        _large.deleter = nullptr;
+    }
+}
+
 String::String(const String& other) {
-    const Pair<const char*, std::size_t> data = other.dataInternal();
-    construct(data.first(), data.second());
+    copyConstruct(other);
 }
 
 String::String(String&& other) noexcept {
@@ -1829,9 +2086,7 @@ String::String(String&& other) noexcept {
 
 String& String::operator=(const String& other) {
     destruct();
-
-    const Pair<const char*, std::size_t> data = other.dataInternal();
-    construct(data.first(), data.second());
+    copyConstruct(other);
     return *this;
 }
 
@@ -2213,6 +2468,10 @@ bool String::containsAny(const StringView substring) const {
     return StringView{*this}.containsAny(substring);
 }
 
+std::size_t String::count(const char character) const {
+    return StringView{*this}.count(character);
+}
+
 char* String::release() {
     CORRADE_ASSERT(!(_small.size & Implementation::SmallStringBit),
         "Containers::String::release(): cannot call on a SSO instance", {});
@@ -2251,8 +2510,6 @@ std::string StringConverter<std::string>::to(const String& other) {
     return std::string{other.data(), other.size()};
 }
 
-}
-
-}}
+}}}
 #endif
 #endif

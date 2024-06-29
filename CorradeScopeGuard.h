@@ -13,6 +13,9 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    v2020.06-1687-g6b5f (2024-06-29)
+    -   Suppressing a "conversion from T to void * of greater size" warning
+        that could happen with certain type sizes on MSVC
     v2020.06-1502-g147e (2023-09-11)
     -   Fixes to the Utility::swap() helper to avoid ambiguity with std::swap()
     v2020.06-1454-gfc3b7 (2023-08-27)
@@ -23,7 +26,7 @@
     v2018.10-232-ge927d7f3 (2019-01-28)
     -   Initial release
 
-    Generated from Corrade v2020.06-1502-g147e (2023-09-11), 248 / 1704 LoC
+    Generated from Corrade v2020.06-1687-g6b5f (2024-06-29), 263 / 1706 LoC
 */
 
 /*
@@ -54,6 +57,9 @@
 
 #include <type_traits>
 
+#ifdef _MSC_VER
+#define CORRADE_TARGET_MSVC
+#endif
 #if defined(_MSC_VER) && _MSC_VER < 1910
 #define CORRADE_MSVC2015_COMPATIBILITY
 #endif
@@ -197,7 +203,16 @@ template<class T, class Deleter> ScopeGuard::ScopeGuard(T handle, Deleter delete
     #else
     reinterpret_cast<void(*)()>(static_cast<void(*)(T)>(deleter))
     #endif
-}, _handle{reinterpret_cast<void*>(handle)} {
+}, _handle{
+    #ifdef CORRADE_TARGET_MSVC
+    #pragma warning(push)
+    #pragma warning(disable: 4312)
+    #endif
+    reinterpret_cast<void*>(handle)
+    #ifdef CORRADE_TARGET_MSVC
+    #pragma warning(pop)
+    #endif
+} {
     static_assert(sizeof(T) <= sizeof(void*), "handle too big to store");
     _deleterWrapper = [](void(**deleter)(), void** handle) {
         (*reinterpret_cast<Deleter*>(deleter))(*reinterpret_cast<T*>(handle));

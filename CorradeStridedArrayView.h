@@ -15,6 +15,13 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    Structured bindings for StridedDimensions on C++17 are opt-in due to
+    reliance on a potentially heavy STL header ---
+    `#define CORRADE_STRUCTURED_BINDINGS` before including the file. Including
+    it multiple times with different macros defined works too.
+
+    v2020.06-1687-g6b5f (2024-06-29)
+    -   Structured bindings for StridedDimensions on C++17
     v2020.06-1454-gfc3b7 (2023-08-27)
     -   New expanded() and collapsed() APIs
     -   Ability to slice to struct members and member functions
@@ -51,7 +58,7 @@
     v2019.01-173-ge663b49c (2019-04-30)
     -   Initial release
 
-    Generated from Corrade v2020.06-1454-gfc3b7 (2023-08-27), 1280 / 2855 LoC
+    Generated from Corrade v2020.06-1687-g6b5f (2024-06-29), 1313 / 2858 LoC
 */
 
 /*
@@ -60,6 +67,7 @@
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
                 2017, 2018, 2019, 2020, 2021, 2022, 2023
               Vladimír Vondruš <mosra@centrum.cz>
+    Copyright © 2022 Stanislaw Halik <sthalik@misaki.pl>
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the "Software"),
@@ -79,6 +87,8 @@
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
 */
+
+#include <type_traits>
 
 #include "CorradeArrayView.h"
 
@@ -311,6 +321,18 @@ template<unsigned dimensions, class T> class StridedDimensions {
         template<class U, unsigned dimensions_> friend StridedArrayView<dimensions_, U> arrayCast(const StridedArrayView<dimensions_, const void>&);
         template<unsigned newDimensions, class U, unsigned dimensions_> StridedArrayView<newDimensions, U> friend arrayCast(const StridedArrayView<dimensions_, void>&, std::size_t);
         template<unsigned newDimensions, class U, unsigned dimensions_> StridedArrayView<newDimensions, U> friend arrayCast(const StridedArrayView<dimensions_, const void>&, std::size_t);
+
+        #if CORRADE_CXX_STANDARD > 201402
+        template<std::size_t index> constexpr friend const T& get(const StridedDimensions<dimensions, T>& value) {
+            return value._data[index];
+        }
+        template<std::size_t index> CORRADE_CONSTEXPR14 friend T& get(StridedDimensions<dimensions, T>& value) {
+            return value._data[index];
+        }
+        template<std::size_t index> CORRADE_CONSTEXPR14 friend T&& get(StridedDimensions<dimensions, T>&& value) {
+            return Utility::move(value._data[index]);
+        }
+        #endif
 
         template<class U, std::size_t ...sequence> constexpr explicit StridedDimensions(const U* values, Implementation::Sequence<sequence...>) noexcept: _data{T(values[sequence])...} {}
 
@@ -959,7 +981,7 @@ template<unsigned dimensions, class T> template<unsigned lessDimensions, class> 
 }
 
 template<unsigned dimensions, class T> template<unsigned dimension> bool StridedArrayView<dimensions, T>::isContiguous() const {
-    static_assert(dimension < dimensions, "dimension out of bounds");
+    static_assert(dimension < dimensions, "dimension out of range");
     std::size_t nextDimensionSize = sizeof(T);
     for(std::size_t i = dimensions; i != dimension; --i) {
         if(std::size_t(_stride._data[i - 1]) != nextDimensionSize) return false;
@@ -978,7 +1000,7 @@ template<unsigned dimensions, class T> ArrayView<T> StridedArrayView<dimensions,
 }
 
 template<unsigned dimensions, class T> template<unsigned dimension> StridedArrayView<dimension + 1, T> StridedArrayView<dimensions, T>::asContiguous() const {
-    static_assert(dimension < dimensions, "dimension out of bounds");
+    static_assert(dimension < dimensions, "dimension out of range");
     CORRADE_DEBUG_ASSERT(isContiguous<dimension>(),
         "Containers::StridedArrayView::asContiguous(): the view is not contiguous from dimension" << dimension, {});
 
@@ -1277,4 +1299,15 @@ template<unsigned dimensions, class T> template<unsigned dimension, unsigned cou
 
 }}
 
+#endif
+#ifdef CORRADE_STRUCTURED_BINDINGS
+namespace std {
+
+#ifndef Corrade_Containers_StructuredBindings_StridedDimensions_h
+#define Corrade_Containers_StructuredBindings_StridedDimensions_h
+template<unsigned dimensions, class T> struct tuple_size<Corrade::Containers::StridedDimensions<dimensions, T>>: integral_constant<size_t, dimensions> {};
+template<size_t index, unsigned dimensions, class T> struct tuple_element<index, Corrade::Containers::StridedDimensions<dimensions, T>> { typedef T type; };
+#endif
+
+}
 #endif

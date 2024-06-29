@@ -23,6 +23,8 @@
     `#define CORRADE_UTILITY_EXPORT` as appropriate. To enable the IFUNC
     functionality, `#define CORRADE_CPU_USE_IFUNC` before including the file.
 
+    v2020.06-1687-g6b5f (2024-06-29)
+    -   FreeBSD and Emscripten compatibility fixes
     v2020.06-1454-gfc3b7 (2023-08-27)
     -   Added BMI2 detection on x86
     -   Fixed an issue on GCC 12+ and Clang, where only one of multiple
@@ -39,7 +41,7 @@
     v2020.06-1015-g8cbd6 (2022-08-02)
     -   Initial release
 
-    Generated from Corrade v2020.06-1454-gfc3b7 (2023-08-27), 1717 / 1993 LoC
+    Generated from Corrade v2020.06-1687-g6b5f (2024-06-29), 1716 / 1995 LoC
 */
 
 /*
@@ -48,6 +50,7 @@
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
                 2017, 2018, 2019, 2020, 2021, 2022, 2023
               Vladimír Vondruš <mosra@centrum.cz>
+    Copyright © 2023 Robert Clausecker <fuz@FreeBSD.org>
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the "Software"),
@@ -280,19 +283,12 @@
 #endif
 
 #elif defined(CORRADE_TARGET_WASM)
+#if defined(CORRADE_TARGET_EMSCRIPTEN) && !defined(__EMSCRIPTEN_major__)
+#include <emscripten/version.h>
+#endif
 #if defined(__wasm_simd128__) && __clang_major__ >= 13 && __EMSCRIPTEN_major__*10000 + __EMSCRIPTEN_minor__*100 + __EMSCRIPTEN_tiny__ >= 20018
 #define CORRADE_TARGET_SIMD128
 #endif
-#endif
-
-#if defined(CORRADE_TARGET_MSVC) || (defined(CORRADE_TARGET_ANDROID) && !__LP64__) || defined(CORRADE_TARGET_EMSCRIPTEN) || (defined(CORRADE_TARGET_APPLE) && !defined(CORRADE_TARGET_IOS) && defined(CORRADE_TARGET_ARM))
-#define CORRADE_LONG_DOUBLE_SAME_AS_DOUBLE
-#endif
-
-#if defined(CORRADE_TARGET_MSVC) && !defined(CORRADE_TARGET_CLANG_CL) && !defined(CORRADE_MSVC_COMPATIBILITY)
-static_assert(sizeof(1 ? "" : "") == 1,
-    "Corrade was built without CORRADE_MSVC_COMPATIBILITY, but /permissive- " "doesn't seem to be enabled. Either rebuild Corrade with the option "
-    "enabled or ensure /permissive- is set for all files that include Corrade " "headers.");
 #endif
 
 #ifdef CORRADE_CPU_USE_IFUNC
@@ -310,8 +306,11 @@ static_assert(sizeof(1 ? "" : "") == 1,
 
 #endif // kate: hl c++
 
-#ifndef CorradeCpu_h
-#define CorradeCpu_h
+#ifndef CORRADE_UTILITY_EXPORT
+#define CORRADE_UTILITY_EXPORT
+#endif
+#define _CORRADE_HELPER_PASTE2(a, b) a ## b
+
 #ifdef CORRADE_TARGET_GCC
 #define CORRADE_ALWAYS_INLINE __attribute__((always_inline)) inline
 #elif defined(CORRADE_TARGET_MSVC)
@@ -326,13 +325,6 @@ static_assert(sizeof(1 ? "" : "") == 1,
 #define CORRADE_NEVER_INLINE __declspec(noinline)
 #else
 #define CORRADE_NEVER_INLINE
-#endif
-
-#define _CORRADE_HELPER_PASTE2(a, b) a ## b
-
-#ifndef CORRADE_UTILITY_EXPORT
-#define CORRADE_UTILITY_EXPORT
-#endif
 #endif
 #ifndef Corrade_Cpu_h
 #define Corrade_Cpu_h
@@ -625,7 +617,9 @@ template<unsigned int value> struct Tags {
     constexpr Tags<~value> operator~() const {
         return Tags<~value>{Init};
     }
-    constexpr explicit operator bool() const { return value; }
+    constexpr explicit operator bool() const {
+        return bool(value);
+    }
     constexpr operator unsigned int() const { return value; }
 };
 
@@ -754,7 +748,7 @@ constexpr DefaultT Default{Implementation::Init};
 
 template<class T> constexpr T tag() { return T{Implementation::Init}; }
 
-#if defined(CORRADE_TARGET_ARM) && defined(__linux__) && !(defined(CORRADE_TARGET_ANDROID) && __ANDROID_API__ < 18)
+#if defined(CORRADE_TARGET_ARM) && ((defined(__linux__) && !(defined(CORRADE_TARGET_ANDROID) && __ANDROID_API__ < 18)) || defined(__FreeBSD__))
 namespace Implementation {
     Features runtimeFeatures(unsigned long caps);
 }
@@ -832,7 +826,7 @@ class Features {
         #endif
         Features runtimeFeatures();
         #endif
-        #if defined(CORRADE_TARGET_ARM) && defined(__linux__) && !(defined(CORRADE_TARGET_ANDROID) && __ANDROID_API__ < 18)
+        #if defined(CORRADE_TARGET_ARM) && ((defined(__linux__) && !(defined(CORRADE_TARGET_ANDROID) && __ANDROID_API__ < 18)) || defined(__FreeBSD__))
         friend Features Implementation::runtimeFeatures(unsigned long);
         #endif
 
@@ -971,7 +965,7 @@ constexpr Features compiledFeatures() {
         };
 }
 
-#if (defined(CORRADE_TARGET_X86) && (defined(CORRADE_TARGET_MSVC) || defined(CORRADE_TARGET_GCC))) || (defined(CORRADE_TARGET_ARM) && ((defined(__linux__) && !(defined(CORRADE_TARGET_ANDROID) && __ANDROID_API__ < 18)) || defined(CORRADE_TARGET_APPLE)))
+#if (defined(CORRADE_TARGET_X86) && (defined(CORRADE_TARGET_MSVC) || defined(CORRADE_TARGET_GCC))) || (defined(CORRADE_TARGET_ARM) && ((defined(__linux__) && !(defined(CORRADE_TARGET_ANDROID) && __ANDROID_API__ < 18)) || defined(CORRADE_TARGET_APPLE) || defined(__FreeBSD__)))
 #ifdef CORRADE_TARGET_ARM
 CORRADE_UTILITY_EXPORT
 #endif
@@ -1610,7 +1604,7 @@ inline Features runtimeFeatures() {
 }
 #endif
 
-#if defined(CORRADE_TARGET_ARM) && defined(__linux__) && !(defined(CORRADE_TARGET_ANDROID) && __ANDROID_API__ < 18)
+#if defined(CORRADE_TARGET_ARM) && ((defined(__linux__) && !(defined(CORRADE_TARGET_ANDROID) && __ANDROID_API__ < 18)) || defined(__FreeBSD__))
 namespace Implementation {
     inline Features runtimeFeatures(const unsigned long caps) {
         unsigned int out = 0;
@@ -1639,7 +1633,7 @@ namespace Implementation {
 
 #endif
 #ifdef CORRADE_CPU_IMPLEMENTATION
-#if defined(CORRADE_TARGET_ARM) && defined(__linux__) && !(defined(CORRADE_TARGET_ANDROID) && __ANDROID_API__ < 18)
+#if defined(CORRADE_TARGET_ARM) && ((defined(__linux__) && !(defined(CORRADE_TARGET_ANDROID) && __ANDROID_API__ < 18)) || defined(__FreeBSD__))
     #include <sys/auxv.h>
 #elif defined(CORRADE_TARGET_ARM) && defined(CORRADE_TARGET_APPLE)
     #include <sys/sysctl.h>
@@ -1679,7 +1673,7 @@ int appleSysctlByName(const char* name) {
 }
 #endif
 
-#if defined(CORRADE_TARGET_ARM) && ((defined(__linux__) && !(defined(CORRADE_TARGET_ANDROID) && __ANDROID_API__ < 18)) || defined(CORRADE_TARGET_APPLE))
+#if defined(CORRADE_TARGET_ARM) && ((defined(__linux__) && !(defined(CORRADE_TARGET_ANDROID) && __ANDROID_API__ < 18)) || defined(CORRADE_TARGET_APPLE) || defined(__FreeBSD__))
 Features runtimeFeatures() {
     #if defined(CORRADE_TARGET_ARM) && defined(__linux__) && !(defined(CORRADE_TARGET_ANDROID) && __ANDROID_API__ < 18)
     return Implementation::runtimeFeatures(getauxval(AT_HWCAP));
@@ -1706,6 +1700,11 @@ Features runtimeFeatures() {
     }
 
     return Features{out};
+
+    #elif defined(CORRADE_TARGET_ARM) && defined(__FreeBSD__)
+    unsigned long hwcap = 0;
+    elf_aux_info(AT_HWCAP, &hwcap, sizeof(hwcap));
+    return Implementation::runtimeFeatures(hwcap);
 
     #else
     #error
