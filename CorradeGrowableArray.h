@@ -18,19 +18,25 @@
     ASan enabled, you can `#define CORRADE_CONTAINERS_NO_SANITIZER_ANNOTATIONS`
     to disable them.
 
+    v2020.06-1846-gc4cdf (2025-01-07)
+    -   List-taking arrayAppend() and arrayInsert(), when passed a slice of the
+        array itself, now correctly perform a copy within the array even if it
+        gets reallocated in the process
+    -   Added arrayClear()
+    -   SFINAE is now done in template args as that's simpler for the compiler
     v2020.06-1687-g6b5f (2024-06-29)
     -   Minor cleanup, some macro logic is now moved to CorradeArrayView.h
     v2020.06-1507-gfbd9 (2023-09-13)
     -   Initial release
 
-    Generated from Corrade v2020.06-1687-g6b5f (2024-06-29), 1067 / 4311 LoC
+    Generated from Corrade v2020.06-1846-gc4cdf (2025-01-07), 1126 / 4334 LoC
 */
 
 /*
     This file is part of Corrade.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
-                2017, 2018, 2019, 2020, 2021, 2022, 2023
+                2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025
               Vladimír Vondruš <mosra@centrum.cz>
 
     Permission is hereby granted, free of charge, to any person obtaining a
@@ -364,6 +370,8 @@ template<template<class> class Allocator, class T, class ...Args> inline T& arra
 }
 
 template<class T, class Allocator = ArrayAllocator<T>> inline T& arrayAppend(Array<T>& array, typename std::common_type<T>::type&& value) {
+    CORRADE_DEBUG_ASSERT(std::size_t(&value - array.data()) >= (arrayCapacity<T, Allocator>(array)),
+        "Containers::arrayAppend(): use the list variant to append values from within the array itself", *array.data());
     return arrayAppend<T, Allocator>(array, Corrade::InPlaceInit, Utility::move(value));
 }
 
@@ -406,6 +414,8 @@ template<template<class> class Allocator, class T, class ...Args> T& arrayInsert
 }
 
 template<class T, class Allocator = ArrayAllocator<T>> inline T& arrayInsert(Array<T>& array, std::size_t index, typename std::common_type<T>::type&& value) {
+    CORRADE_DEBUG_ASSERT(std::size_t(&value - array.data()) >= (arrayCapacity<T, Allocator>(array)),
+        "Containers::arrayInsert(): use the list variant to insert values from within the array itself", *array.data());
     return arrayInsert<T, Allocator>(array, index, Corrade::InPlaceInit, Utility::move(value));
 }
 
@@ -449,6 +459,12 @@ template<class T, class Allocator = ArrayAllocator<T>> void arrayRemoveSuffix(Ar
 
 template<template<class> class Allocator, class T> inline void arrayRemoveSuffix(Array<T>& array, std::size_t count = 1) {
     arrayRemoveSuffix<T, Allocator<T>>(array, count);
+}
+
+template<class T, class Allocator = ArrayAllocator<T>> void arrayClear(Array<T>& array);
+
+template<template<class> class Allocator, class T> inline void arrayClear(Array<T>& array) {
+    arrayClear<T, Allocator<T>>(array);
 }
 
 template<class T, class Allocator = ArrayAllocator<T>> void arrayShrink(Array<T>& array, Corrade::NoInitT = Corrade::NoInit);
@@ -542,10 +558,10 @@ template<class T, typename std::enable_if<
         #endif
 }
 
-template<class T> inline void arrayDestruct(T*, T*, typename std::enable_if<std::is_trivially_destructible<T>::value>::type* = nullptr) {
+template<class T, typename std::enable_if<std::is_trivially_destructible<T>::value, int>::type = 0> inline void arrayDestruct(T*, T*) {
 }
 
-template<class T> inline void arrayDestruct(T* begin, T* const end, typename std::enable_if<!std::is_trivially_destructible<T>::value>::type* = nullptr) {
+template<class T, typename std::enable_if<!std::is_trivially_destructible<T>::value, int>::type = 0> inline void arrayDestruct(T* begin, T* const end) {
     for(; begin < end; ++begin) begin->~T();
 }
 
@@ -748,6 +764,8 @@ template<class T, class Allocator> T* arrayGrowBy(Array<T>& array, const std::si
 }
 
 template<class T, class Allocator> inline T& arrayAppend(Array<T>& array, const typename std::common_type<T>::type& value) {
+    CORRADE_DEBUG_ASSERT(std::size_t(&value - array.data()) >= arrayCapacity(array),
+        "Containers::arrayAppend(): use the list variant to append values from within the array itself", *array.data());
     T* const it = Implementation::arrayGrowBy<T, Allocator>(array, 1);
     #if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG) &&  __GNUC__ < 5
     Implementation::construct(*it, value);
@@ -758,10 +776,18 @@ template<class T, class Allocator> inline T& arrayAppend(Array<T>& array, const 
 }
 
 template<class T, class Allocator> inline ArrayView<T> arrayAppend(Array<T>& array, const typename std::common_type<ArrayView<const T>>::type values) {
+    const T* const valueData = values.data();
     const std::size_t valueCount = values.size();
 
+    std::size_t relocateOffset = std::size_t(valueData - array.data());
+    if(relocateOffset >= arrayCapacity<T, Allocator>(array))
+        relocateOffset = ~std::size_t{};
+
     T* const it = Implementation::arrayGrowBy<T, Allocator>(array, valueCount);
-    Implementation::arrayCopyConstruct<T>(values.data(), it, valueCount);
+    Implementation::arrayCopyConstruct<T>(
+        relocateOffset != ~std::size_t{} ? array.data() + relocateOffset :
+            valueData,
+        it, valueCount);
     return {it, valueCount};
 }
 
@@ -872,6 +898,8 @@ template<class T, class Allocator> T* arrayGrowAtBy(Array<T>& array, const std::
 }
 
 template<class T, class Allocator> inline T& arrayInsert(Array<T>& array, std::size_t index, const typename std::common_type<T>::type& value) {
+    CORRADE_DEBUG_ASSERT(std::size_t(&value - array.data()) >= arrayCapacity(array),
+        "Containers::arrayInsert(): use the list variant to insert values from within the array itself", *array.data());
     T* const it = Implementation::arrayGrowAtBy<T, Allocator>(array, index, 1);
     #if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG) &&  __GNUC__ < 5
     Implementation::construct(*it, value);
@@ -882,10 +910,22 @@ template<class T, class Allocator> inline T& arrayInsert(Array<T>& array, std::s
 }
 
 template<class T, class Allocator> inline ArrayView<T> arrayInsert(Array<T>& array, std::size_t index, const typename std::common_type<ArrayView<const T>>::type values) {
+    const T* const valueData = values.data();
     const std::size_t valueCount = values.size();
 
+    std::size_t relocateOffset = std::size_t(valueData - array.data());
+    if(relocateOffset < arrayCapacity<T, Allocator>(array)) {
+        if(index <= relocateOffset)
+            relocateOffset += valueCount;
+        else CORRADE_DEBUG_ASSERT(relocateOffset + valueCount <= index,
+            "Containers::arrayInsert(): attempting to insert a slice [" << Utility::Debug::nospace << relocateOffset << Utility::Debug::nospace << ":" << Utility::Debug::nospace << relocateOffset + valueCount << Utility::Debug::nospace << "] into itself at index" << index, {});
+    } else relocateOffset = ~std::size_t{};
+
     T* const it = Implementation::arrayGrowAtBy<T, Allocator>(array, index, valueCount);
-    Implementation::arrayCopyConstruct<T>(values.data(), it, valueCount);
+    Implementation::arrayCopyConstruct<T>(
+        relocateOffset != ~std::size_t{} ? array.data() + relocateOffset :
+            valueData,
+        it, valueCount);
     return {it, valueCount};
 }
 
@@ -1031,6 +1071,25 @@ template<class T, class Allocator> void arrayRemoveSuffix(Array<T>& array, const
             arrayGuts.data + arrayGuts.size - count);
         #endif
         arrayGuts.size -= count;
+    }
+}
+
+template<class T, class Allocator> void arrayClear(Array<T>& array) {
+    auto& arrayGuts = reinterpret_cast<Implementation::ArrayGuts<T>&>(array);
+
+    if(arrayGuts.deleter != Allocator::deleter) {
+        array = {};
+
+    } else {
+        Implementation::arrayDestruct<T>(arrayGuts.data, arrayGuts.data + arrayGuts.size);
+        #ifdef _CORRADE_CONTAINERS_SANITIZER_ENABLED
+        __sanitizer_annotate_contiguous_container(
+            Allocator::base(arrayGuts.data),
+            arrayGuts.data + Allocator::capacity(arrayGuts.data),
+            arrayGuts.data + arrayGuts.size,
+            arrayGuts.data);
+        #endif
+        arrayGuts.size = 0;
     }
 }
 

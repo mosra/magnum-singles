@@ -19,6 +19,9 @@
     `#define CORRADE_PAIR_STL_COMPATIBILITY` before including the file.
     Including it multiple times with different macros defined works too.
 
+    v2020.06-1846-gc4cdf (2025-01-07)
+    -   Non-const C++17 structured bindings are now constexpr as well
+    -   Structured bindings of const types now work even w/o <utility>
     v2020.06-1687-g6b5f (2024-06-29)
     -   Added explicit conversion constructors
     -   Structured bindings on C++17
@@ -27,16 +30,16 @@
     v2020.06-1454-gfc3b7 (2023-08-27)
     -   Initial release
 
-    Generated from Corrade v2020.06-1687-g6b5f (2024-06-29), 420 / 1745 LoC
+    Generated from Corrade v2020.06-1846-gc4cdf (2025-01-07), 432 / 1729 LoC
 */
 
 /*
     This file is part of Corrade.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
-                2017, 2018, 2019, 2020, 2021, 2022, 2023
+                2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025
               Vladimír Vondruš <mosra@centrum.cz>
-    Copyright © 2022 Stanislaw Halik <sthalik@misaki.pl>
+    Copyright © 2022, 2023 Stanislaw Halik <sthalik@misaki.pl>
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the "Software"),
@@ -68,6 +71,15 @@
 #endif
 #ifdef __clang__
 #define CORRADE_TARGET_CLANG
+#endif
+#ifdef _MSC_VER
+#ifdef _MSVC_LANG
+#define CORRADE_CXX_STANDARD _MSVC_LANG
+#else
+#define CORRADE_CXX_STANDARD 201103L
+#endif
+#else
+#define CORRADE_CXX_STANDARD __cplusplus
 #endif
 
 #ifndef Corrade_Tags_h
@@ -119,6 +131,11 @@ constexpr InPlaceInitT InPlaceInit{InPlaceInitT::Init{}};
 
 }
 
+#endif
+#if CORRADE_CXX_STANDARD >= 201402 && !defined(CORRADE_MSVC2015_COMPATIBILITY)
+#define CORRADE_CONSTEXPR14 constexpr
+#else
+#define CORRADE_CONSTEXPR14
 #endif
 #ifndef Corrade_Utility_Move_h
 #define Corrade_Utility_Move_h
@@ -265,12 +282,12 @@ template<class F, class S> class Pair {
             return !operator==(other);
         }
 
-        F& first() & { return _first; }
-        F first() && { return Utility::move(_first); }
+        CORRADE_CONSTEXPR14 F& first() & { return _first; }
+        CORRADE_CONSTEXPR14 F first() && { return Utility::move(_first); }
         constexpr const F& first() const & { return _first; }
 
-        S& second() & { return _second; }
-        S second() && { return Utility::move(_second); }
+        CORRADE_CONSTEXPR14 S& second() & { return _second; }
+        CORRADE_CONSTEXPR14 S second() && { return Utility::move(_second); }
         constexpr const S& second() const & { return _second; }
 
     private:
@@ -348,15 +365,6 @@ template<class F, class S> struct DeducedPairConverter<std::pair<F, S>>: PairCon
 #endif
 #endif
 #ifdef CORRADE_STRUCTURED_BINDINGS
-#ifdef _MSC_VER
-#ifdef _MSVC_LANG
-#define CORRADE_CXX_STANDARD _MSVC_LANG
-#else
-#define CORRADE_CXX_STANDARD 201103L
-#endif
-#else
-#define CORRADE_CXX_STANDARD __cplusplus
-#endif
 #if CORRADE_CXX_STANDARD >= 202002
 #include <version>
 #else
@@ -412,8 +420,12 @@ namespace std {
 #ifndef Corrade_Containers_StructuredBindings_Pair_h
 #define Corrade_Containers_StructuredBindings_Pair_h
 template<class F, class S> struct tuple_size<Corrade::Containers::Pair<F, S>>: integral_constant<size_t, 2> {};
+template<class F, class S> struct tuple_size<const Corrade::Containers::Pair<F, S>>: integral_constant<size_t, 2> {};
 template<class F, class S> struct tuple_element<0, Corrade::Containers::Pair<F, S>> { typedef F type; };
 template<class F, class S> struct tuple_element<1, Corrade::Containers::Pair<F, S>> { typedef S type; };
+template<size_t i, class F, class S> struct tuple_element<i, const Corrade::Containers::Pair<F, S>> {
+    typedef const typename tuple_element<i, Corrade::Containers::Pair<F, S>>::type type;
+};
 #endif
 
 }

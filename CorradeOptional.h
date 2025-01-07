@@ -17,6 +17,8 @@
     `#define CORRADE_OPTIONAL_STL_COMPATIBILITY` before including the file.
     Including it multiple times with different macros defined works too.
 
+    v2020.06-1846-gc4cdf (2025-01-07)
+    -   Expanded the uninitialized value warning workaround to all GCC versions
     v2020.06-1502-g147e (2023-09-11)
     -   Fixes to the Utility::swap() helper to avoid ambiguity with std::swap()
     v2020.06-1454-gfc3b7 (2023-08-27)
@@ -40,14 +42,14 @@
     v2018.10-183-g4eb1adc0 (2019-01-23)
     -   Initial release
 
-    Generated from Corrade v2020.06-1502-g147e (2023-09-11), 456 / 1879 LoC
+    Generated from Corrade v2020.06-1846-gc4cdf (2025-01-07), 458 / 1863 LoC
 */
 
 /*
     This file is part of Corrade.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
-                2017, 2018, 2019, 2020, 2021, 2022, 2023
+                2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025
               Vladimír Vondruš <mosra@centrum.cz>
 
     Permission is hereby granted, free of charge, to any person obtaining a
@@ -329,7 +331,7 @@ template<class T> class Optional {
     private:
         union {
             T _value;
-            #if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG) && __GNUC__ >= 10 && __OPTIMIZE__
+            #if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG) && __OPTIMIZE__
             volatile char _gccStopSayingThisIsMaybeUninitialized[sizeof(T)];
             #endif
         };

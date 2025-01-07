@@ -13,17 +13,21 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    v2020.06-1846-gc4cdf (2025-01-07)
+    -   Fixed an issue where a Function<T()> used in a function argument would
+        be ambiguous with an overload having Function<T(...)> of any number of
+        arguments
     v2020.06-1631-g9001f (2024-05-17)
     -   Initial release
 
-    Generated from Corrade v2020.06-1631-g9001f (2024-05-17), 511 / 1919 LoC
+    Generated from Corrade v2020.06-1846-gc4cdf (2025-01-07), 505 / 1907 LoC
 */
 
 /*
     This file is part of Corrade.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
-                2017, 2018, 2019, 2020, 2021, 2022, 2023
+                2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025
               Vladimír Vondruš <mosra@centrum.cz>
 
     Permission is hereby granted, free of charge, to any person obtaining a
@@ -257,26 +261,16 @@ template<class T, class Signature, class = void> struct IsFunctor;
 template<class T, class R, class ...Args, class U> struct IsFunctor<T, R(Args...), U> {
     enum: bool { value = false };
 };
-#if !defined(CORRADE_MSVC2017_COMPATIBILITY) || defined(CORRADE_MSVC2015_COMPATIBILITY)
-template<class Class, class R, class ...Args> void functorSignature(R(Class::*)(Args...)) {}
-template<class Class, class R, class ...Args> void functorSignature(R(Class::*)(Args...) &) {}
-template<class Class, class R, class ...Args> void functorSignature(R(Class::*)(Args...) const) {}
-template<class Class, class R, class ...Args> void functorSignature(R(Class::*)(Args...) const &) {}
-template<class T, class R, class ...Args> struct IsFunctor<T, R(Args...), decltype(functorSignature<T, R, Args...>(&T::operator()))> {
-    enum: bool { value = !std::is_convertible<T, R(*)(Args...)>::value };
-};
-#else
 template<class> struct FunctorSignature;
-template<class C, class R,  class ...Args> struct FunctorSignature<R(C::*)(Args...)> {
-    static void match(R(C::*)(Args...)) {}
-    static void match(R(C::*)(Args...) &) {}
-    static void match(R(C::*)(Args...) const) {}
-    static void match(R(C::*)(Args...) const &) {}
+template<class Class, class R,  class ...Args> struct FunctorSignature<R(Class::*)(Args...)> {
+    static void match(R(Class::*)(Args...)) {}
+    static void match(R(Class::*)(Args...) &) {}
+    static void match(R(Class::*)(Args...) const) {}
+    static void match(R(Class::*)(Args...) const &) {}
 };
 template<class T, class R, class ...Args> struct IsFunctor<T, R(Args...), decltype(FunctorSignature<R(T::*)(Args...)>::match(&T::operator()))> {
     enum: bool { value = !std::is_convertible<T, R(*)(Args...)>::value };
 };
-#endif
 
 }
 

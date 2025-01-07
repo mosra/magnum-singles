@@ -34,10 +34,15 @@
 
     The STL compatibility bits are included as well --- opt-in by specifying
     either `#define CORRADE_STRING_STL_COMPATIBILITY` or
-    `#define CORRADE_STRING_STL_VIEW_COMPATIBILITY` before including the file
-    in both the headers and the implementation. Including it multiple times
-    with different macros defined works too.
+    `#define CORRADE_STRING_STL_VIEW_COMPATIBILITY` before including the file.
+    Including it multiple times with different macros defined works too.
 
+    v2020.06-1846-gc4cdf (2025-01-07)
+    -   Fixed embarrassing bugs in the NEON and WASM SIMD code paths for find()
+    -   SFINAE is now done in template args as that's simpler for the compiler
+    -   std::string STL compatibility is now inline, meaning the
+        CORRADE_STRING_STL_COMPATIBILITY macro doesn't need to be defined also
+        for CORRADE_STRING_IMPLEMENTATION anymore
     v2020.06-1687-g6b5f (2024-06-29)
     -   New, SIMD-optimized count() API
     -   Literals are now available in an inline Literals::StringLiterals
@@ -47,14 +52,14 @@
     v2020.06-1502-g147e (2023-09-11)
     -   Initial release
 
-    Generated from Corrade v2020.06-1687-g6b5f (2024-06-29), 2515 / 2192 LoC
+    Generated from Corrade v2020.06-1846-gc4cdf (2025-01-07), 2517 / 2176 LoC
 */
 
 /*
     This file is part of Corrade.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
-                2017, 2018, 2019, 2020, 2021, 2022, 2023
+                2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025
               Vladimír Vondruš <mosra@centrum.cz>
 
     Permission is hereby granted, free of charge, to any person obtaining a
@@ -648,7 +653,7 @@ class CORRADE_UTILITY_EXPORT String {
 
         explicit String(char* data, std::size_t size, Deleter deleter) noexcept;
 
-        template<class T> String(typename std::enable_if<std::is_convertible<T, Deleter>::value && !std::is_convertible<T, std::size_t>::value, char*>::type data, T deleter) noexcept: String{deleter, nullptr, data} {}
+        template<class T, typename std::enable_if<std::is_convertible<T, Deleter>::value && !std::is_convertible<T, std::size_t>::value, int>::type = 0> String(char* data, T deleter) noexcept: String{deleter, nullptr, data} {}
 
         explicit String(const char* data, std::size_t size, Deleter deleter) noexcept: String{const_cast<char*>(data), size, deleter} {}
 
@@ -656,7 +661,7 @@ class CORRADE_UTILITY_EXPORT String {
 
         explicit String(std::nullptr_t, std::size_t size, Deleter deleter) = delete;
 
-        template<class T> String(typename std::enable_if<std::is_convertible<T, Deleter>::value && !std::is_convertible<T, std::size_t>::value, std::nullptr_t>::type, T) noexcept = delete;
+        template<class T, typename std::enable_if<std::is_convertible<T, Deleter>::value && !std::is_convertible<T, std::size_t>::value, int>::type = 0> String(std::nullptr_t, T) noexcept = delete;
 
         explicit String(Corrade::ValueInitT, std::size_t size);
 
@@ -894,6 +899,31 @@ template<> struct CORRADE_UTILITY_EXPORT StringViewConverter<char, std::string> 
     static MutableStringView from(std::string& other);
     static std::string to(MutableStringView other);
 };
+
+#define CORRADE_STRING_STL_INLINE inline
+CORRADE_STRING_STL_INLINE StringView StringViewConverter<const char, std::string>::from(const std::string& other) {
+    return StringView{other.data(), other.size(), StringViewFlag::NullTerminated};
+}
+
+CORRADE_STRING_STL_INLINE std::string StringViewConverter<const char, std::string>::to(StringView other) {
+    return std::string{other.data(), other.size()};
+}
+
+CORRADE_STRING_STL_INLINE MutableStringView StringViewConverter<char, std::string>::from(std::string& other) {
+    return MutableStringView{&other[0], other.size(), StringViewFlag::NullTerminated};
+}
+
+CORRADE_STRING_STL_INLINE std::string StringViewConverter<char, std::string>::to(MutableStringView other) {
+    return std::string{other.data(), other.size()};
+}
+
+CORRADE_STRING_STL_INLINE String StringConverter<std::string>::from(const std::string& other) {
+    return String{other.data(), other.size()};
+}
+
+CORRADE_STRING_STL_INLINE std::string StringConverter<std::string>::to(const String& other) {
+    return std::string{other.data(), other.size()};
+}
 
 }}}
 
@@ -1328,6 +1358,7 @@ CORRADE_UTILITY_CPU_MAYBE_UNUSED CORRADE_ENABLE(NEON) typename std::decay<declty
 
     if(i < end) {
         CORRADE_INTERNAL_DEBUG_ASSERT(i + 16 > end);
+        i = end - 16;
         const uint8x16_t chunk = vld1q_u8(reinterpret_cast<const std::uint8_t*>(i));
         const uint16x8_t eq16 = vreinterpretq_u16_u8(vceqq_u8(chunk, vn1));
         const uint64x1_t shrn64 = vreinterpret_u64_u8(vshrn_n_u16(eq16, 4));
@@ -1405,9 +1436,9 @@ CORRADE_UTILITY_CPU_MAYBE_UNUSED typename std::decay<decltype(stringFindCharacte
     }
 
     for(; i + 16 <= end; i += 16) {
-        const v128_t chunk = wasm_v128_load(data);
+        const v128_t chunk = wasm_v128_load(i);
         if(const int mask = wasm_i8x16_bitmask(wasm_i8x16_eq(chunk, vn1)))
-            return data + __builtin_ctz(mask);
+            return i + __builtin_ctz(mask);
     }
 
     if(i < end) {
@@ -2483,33 +2514,4 @@ char* String::release() {
 }
 
 }}
-#ifdef CORRADE_STRING_STL_COMPATIBILITY
-namespace Corrade { namespace Containers { namespace Implementation {
-
-StringView StringViewConverter<const char, std::string>::from(const std::string& other) {
-    return StringView{other.data(), other.size(), StringViewFlag::NullTerminated};
-}
-
-std::string StringViewConverter<const char, std::string>::to(StringView other) {
-    return std::string{other.data(), other.size()};
-}
-
-MutableStringView StringViewConverter<char, std::string>::from(std::string& other) {
-    return MutableStringView{&other[0], other.size(), StringViewFlag::NullTerminated};
-}
-
-std::string StringViewConverter<char, std::string>::to(MutableStringView other) {
-    return std::string{other.data(), other.size()};
-}
-
-String StringConverter<std::string>::from(const std::string& other) {
-    return String{other.data(), other.size()};
-}
-
-std::string StringConverter<std::string>::to(const String& other) {
-    return std::string{other.data(), other.size()};
-}
-
-}}}
-#endif
 #endif

@@ -22,9 +22,14 @@
     before including the file. Including it multiple times with different
     macros defined works too.
 
+    v2020.06-1846-gc4cdf (2025-01-07)
+    -   StaticArray default constructor and constructors from a C array are now
+        implicit
+    -   SFINAE is now done in template args as that's simpler for the compiler
+    -   Structured bindings of const types now work even w/o <utility>
     v2020.06-1687-g6b5f (2024-06-29)
     -   Ability to InPlaceInit-construct an Array from an ArrayView, in
-        addition to  std::initializer_list
+        addition to std::initializer_list
     -   StaticArray is now trivially copyable and constexpr if the underlying
         type is
     -   Structured bindings for StaticArray on C++17
@@ -67,14 +72,14 @@
     v2019.01-47-g524c127e (2019-02-18)
     -   Initial release
 
-    Generated from Corrade v2020.06-1687-g6b5f (2024-06-29), 1060 / 2727 LoC
+    Generated from Corrade v2020.06-1846-gc4cdf (2025-01-07), 1067 / 2715 LoC
 */
 
 /*
     This file is part of Corrade.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
-                2017, 2018, 2019, 2020, 2021, 2022, 2023
+                2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025
               Vladimír Vondruš <mosra@centrum.cz>
     Copyright © 2022 Stanislaw Halik <sthalik@misaki.pl>
 
@@ -229,17 +234,17 @@ namespace Implementation {
         }
     };
 
-    template<class T> T* noInitAllocate(std::size_t size, typename std::enable_if<std::is_trivial<T>::value>::type* = nullptr) {
+    template<class T, typename std::enable_if<std::is_trivial<T>::value, int>::type = 0> T* noInitAllocate(std::size_t size) {
         return new T[size];
     }
-    template<class T> T* noInitAllocate(std::size_t size, typename std::enable_if<!std::is_trivial<T>::value>::type* = nullptr) {
+    template<class T, typename std::enable_if<!std::is_trivial<T>::value, int>::type = 0> T* noInitAllocate(std::size_t size) {
         return reinterpret_cast<T*>(new char[size*sizeof(T)]);
     }
 
-    template<class T> auto noInitDeleter(typename std::enable_if<std::is_trivial<T>::value>::type* = nullptr) -> void(*)(T*, std::size_t) {
+    template<class T, typename std::enable_if<std::is_trivial<T>::value, int>::type = 0> auto noInitDeleter() -> void(*)(T*, std::size_t) {
         return nullptr;
     }
-    template<class T> auto noInitDeleter(typename std::enable_if<!std::is_trivial<T>::value>::type* = nullptr) -> void(*)(T*, std::size_t) {
+    template<class T, typename std::enable_if<!std::is_trivial<T>::value, int>::type = 0> auto noInitDeleter() -> void(*)(T*, std::size_t) {
         return [](T* data, std::size_t size) {
             if(data) for(T *it = data, *end = data + size; it != end; ++it)
                 it->~T();
@@ -542,23 +547,23 @@ template<class T, class D> inline T* Array<T, D>::release() {
 namespace Implementation {
 
 template<class U, class T, class D> struct ArrayViewConverter<U, Array<T, D>> {
-    template<class V = U> constexpr static typename std::enable_if<std::is_convertible<T*, V*>::value, ArrayView<U>>::type from(Array<T, D>& other) {
+    template<class V = U, typename std::enable_if<std::is_convertible<T*, V*>::value, int>::type = 0> constexpr static ArrayView<U> from(Array<T, D>& other) {
         static_assert(sizeof(T) == sizeof(U), "types are not compatible");
         return {other.data(), other.size()};
     }
-    template<class V = U> constexpr static typename std::enable_if<std::is_convertible<T*, V*>::value, ArrayView<U>>::type from(Array<T, D>&& other) {
+    template<class V = U, typename std::enable_if<std::is_convertible<T*, V*>::value, int>::type = 0> constexpr static ArrayView<U> from(Array<T, D>&& other) {
         static_assert(sizeof(T) == sizeof(U), "types are not compatible");
         return {other.data(), other.size()};
     }
 };
 template<class U, class T, class D> struct ArrayViewConverter<const U, Array<T, D>> {
-    template<class V = U> constexpr static typename std::enable_if<std::is_convertible<T*, V*>::value, ArrayView<const U>>::type from(const Array<T, D>& other) {
+    template<class V = U, typename std::enable_if<std::is_convertible<T*, V*>::value, int>::type = 0> constexpr static ArrayView<const U> from(const Array<T, D>& other) {
         static_assert(sizeof(T) == sizeof(U), "types are not compatible");
         return {other.data(), other.size()};
     }
 };
 template<class U, class T, class D> struct ArrayViewConverter<const U, Array<const T, D>> {
-    template<class V = U> constexpr static typename std::enable_if<std::is_convertible<T*, V*>::value, ArrayView<const U>>::type from(const Array<const T, D>& other) {
+    template<class V = U, typename std::enable_if<std::is_convertible<T*, V*>::value, int>::type = 0> constexpr static ArrayView<const U> from(const Array<const T, D>& other) {
         static_assert(sizeof(T) == sizeof(U), "types are not compatible");
         return {other.data(), other.size()};
     }
@@ -690,44 +695,44 @@ template<std::size_t size_, class T> class StaticArray: Implementation::StaticAr
         }
 
         #if !defined(CORRADE_TARGET_GCC) || defined(CORRADE_TARGET_CLANG) || __GNUC__ >= 5
-        template<std::size_t size> constexpr explicit StaticArray(Corrade::InPlaceInitT, const T(&data)[size]): Implementation::StaticArrayDataFor<size_, T>{Corrade::InPlaceInit, typename Implementation::GenerateSequence<size>::Type{}, data} {
+        template<std::size_t size> constexpr /*implicit*/ StaticArray(Corrade::InPlaceInitT, const T(&data)[size]): Implementation::StaticArrayDataFor<size_, T>{Corrade::InPlaceInit, typename Implementation::GenerateSequence<size>::Type{}, data} {
             static_assert(size == size_, "Containers::StaticArray: wrong number of initializers");
         }
         #else
-        constexpr explicit StaticArray(Corrade::InPlaceInitT, const T(&data)[size_]): Implementation::StaticArrayDataFor<size_, T>{Corrade::InPlaceInit, typename Implementation::GenerateSequence<size_>::Type{}, data} {}
+        constexpr /*implicit*/ StaticArray(Corrade::InPlaceInitT, const T(&data)[size_]): Implementation::StaticArrayDataFor<size_, T>{Corrade::InPlaceInit, typename Implementation::GenerateSequence<size_>::Type{}, data} {}
         #endif
 
         #ifndef CORRADE_MSVC2017_COMPATIBILITY
         #if !defined(CORRADE_TARGET_GCC) || defined(CORRADE_TARGET_CLANG) || __GNUC__ >= 5
-        template<std::size_t size> constexpr explicit StaticArray(Corrade::InPlaceInitT, T(&&data)[size]): Implementation::StaticArrayDataFor<size_, T>{Corrade::InPlaceInit, typename Implementation::GenerateSequence<size>::Type{}, Utility::move(data)} {
+        template<std::size_t size> constexpr /*implicit*/ StaticArray(Corrade::InPlaceInitT, T(&&data)[size]): Implementation::StaticArrayDataFor<size_, T>{Corrade::InPlaceInit, typename Implementation::GenerateSequence<size>::Type{}, Utility::move(data)} {
             static_assert(size == size_, "Containers::StaticArray: wrong number of initializers");
         }
         #else
-        constexpr explicit StaticArray(Corrade::InPlaceInitT, T(&&data)[size_]): Implementation::StaticArrayDataFor<size_, T>{Corrade::InPlaceInit, typename Implementation::GenerateSequence<size_>::Type{}, Utility::move(data)} {}
+        constexpr /*implicit*/ StaticArray(Corrade::InPlaceInitT, T(&&data)[size_]): Implementation::StaticArrayDataFor<size_, T>{Corrade::InPlaceInit, typename Implementation::GenerateSequence<size_>::Type{}, Utility::move(data)} {}
         #endif
         #endif
 
-        constexpr explicit StaticArray(): Implementation::StaticArrayDataFor<size_, T>{Corrade::ValueInit} {}
+        constexpr /*implicit*/ StaticArray(): Implementation::StaticArrayDataFor<size_, T>{Corrade::ValueInit} {}
 
         template<class First, class ...Next, class = typename std::enable_if<std::is_convertible<First&&, T>::value>::type> constexpr /*implicit*/ StaticArray(First&& first, Next&&... next): Implementation::StaticArrayDataFor<size_, T>{Corrade::InPlaceInit, Utility::forward<First>(first), Utility::forward<Next>(next)...} {
             static_assert(sizeof...(next) + 1 == size_, "Containers::StaticArray: wrong number of initializers");
         }
 
         #if !defined(CORRADE_TARGET_GCC) || defined(CORRADE_TARGET_CLANG) || __GNUC__ >= 5
-        template<std::size_t size> constexpr explicit StaticArray(const T(&data)[size]): Implementation::StaticArrayDataFor<size_, T>{Corrade::InPlaceInit, typename Implementation::GenerateSequence<size>::Type{}, data} {
+        template<std::size_t size> constexpr /*implicit*/ StaticArray(const T(&data)[size]): Implementation::StaticArrayDataFor<size_, T>{Corrade::InPlaceInit, typename Implementation::GenerateSequence<size>::Type{}, data} {
             static_assert(size == size_, "Containers::StaticArray: wrong number of initializers");
         }
         #else
-        constexpr explicit StaticArray(const T(&data)[size_]): Implementation::StaticArrayDataFor<size_, T>{Corrade::InPlaceInit, typename Implementation::GenerateSequence<size_>::Type{}, data} {}
+        constexpr /*implicit*/ StaticArray(const T(&data)[size_]): Implementation::StaticArrayDataFor<size_, T>{Corrade::InPlaceInit, typename Implementation::GenerateSequence<size_>::Type{}, data} {}
         #endif
 
         #ifndef CORRADE_MSVC2017_COMPATIBILITY
         #if !defined(CORRADE_TARGET_GCC) || defined(CORRADE_TARGET_CLANG) || __GNUC__ >= 5
-        template<std::size_t size> constexpr explicit StaticArray(T(&&data)[size]): Implementation::StaticArrayDataFor<size_, T>{Corrade::InPlaceInit, typename Implementation::GenerateSequence<size>::Type{}, Utility::move(data)} {
+        template<std::size_t size> constexpr /*implicit*/ StaticArray(T(&&data)[size]): Implementation::StaticArrayDataFor<size_, T>{Corrade::InPlaceInit, typename Implementation::GenerateSequence<size>::Type{}, Utility::move(data)} {
             static_assert(size == size_, "Containers::StaticArray: wrong number of initializers");
         }
         #else
-        constexpr explicit StaticArray(T(&&data)[size_]): Implementation::StaticArrayDataFor<size_, T>{Corrade::InPlaceInit, typename Implementation::GenerateSequence<size_>::Type{}, Utility::move(data)} {}
+        constexpr /*implicit*/ StaticArray(T(&&data)[size_]): Implementation::StaticArrayDataFor<size_, T>{Corrade::InPlaceInit, typename Implementation::GenerateSequence<size_>::Type{}, Utility::move(data)} {}
         #endif
         #endif
 
@@ -1001,19 +1006,19 @@ template<std::size_t size_, class T> template<std::size_t size__> constexpr Stat
 namespace Implementation {
 
 template<class U, std::size_t size, class T> struct ArrayViewConverter<U, StaticArray<size, T>> {
-    template<class V = U> constexpr static typename std::enable_if<std::is_convertible<T*, V*>::value, ArrayView<U>>::type from(StaticArray<size, T>& other) {
+    template<class V = U, typename std::enable_if<std::is_convertible<T*, V*>::value, int>::type = 0> constexpr static ArrayView<U> from(StaticArray<size, T>& other) {
         static_assert(sizeof(T) == sizeof(U), "types are not compatible");
         return {other.data(), other.size()};
     }
 };
 template<class U, std::size_t size, class T> struct ArrayViewConverter<const U, StaticArray<size, T>> {
-    template<class V = U> constexpr static typename std::enable_if<std::is_convertible<T*, V*>::value, ArrayView<const U>>::type from(const StaticArray<size, T>& other) {
+    template<class V = U, typename std::enable_if<std::is_convertible<T*, V*>::value, int>::type = 0> constexpr static ArrayView<const U> from(const StaticArray<size, T>& other) {
         static_assert(sizeof(T) == sizeof(U), "types are not compatible");
         return {other.data(), other.size()};
     }
 };
 template<class U, std::size_t size, class T> struct ArrayViewConverter<const U, StaticArray<size, const T>> {
-    template<class V = U> constexpr static typename std::enable_if<std::is_convertible<T*, V*>::value, ArrayView<const U>>::type from(const StaticArray<size, const T>& other) {
+    template<class V = U, typename std::enable_if<std::is_convertible<T*, V*>::value, int>::type = 0> constexpr static ArrayView<const U> from(const StaticArray<size, const T>& other) {
         static_assert(sizeof(T) == sizeof(U), "types are not compatible");
         return {other.data(), other.size()};
     }
@@ -1022,19 +1027,19 @@ template<std::size_t size, class T> struct ErasedArrayViewConverter<StaticArray<
 template<std::size_t size, class T> struct ErasedArrayViewConverter<const StaticArray<size, T>>: ArrayViewConverter<const T, StaticArray<size, T>> {};
 
 template<class U, std::size_t size, class T> struct StaticArrayViewConverter<size, U, StaticArray<size, T>> {
-    template<class V = U> constexpr static typename std::enable_if<std::is_convertible<T*, V*>::value, StaticArrayView<size, U>>::type from(StaticArray<size, T>& other) {
+    template<class V = U, typename std::enable_if<std::is_convertible<T*, V*>::value, int>::type = 0> constexpr static StaticArrayView<size, U> from(StaticArray<size, T>& other) {
         static_assert(sizeof(T) == sizeof(U), "types are not compatible");
         return StaticArrayView<size, T>{other.data()};
     }
 };
 template<class U, std::size_t size, class T> struct StaticArrayViewConverter<size, const U, StaticArray<size, T>> {
-    template<class V = U> constexpr static typename std::enable_if<std::is_convertible<T*, V*>::value, StaticArrayView<size, const U>>::type from(const StaticArray<size, T>& other) {
+    template<class V = U, typename std::enable_if<std::is_convertible<T*, V*>::value, int>::type = 0> constexpr static StaticArrayView<size, const U> from(const StaticArray<size, T>& other) {
         static_assert(sizeof(T) == sizeof(U), "types are not compatible");
         return StaticArrayView<size, const T>(other.data());
     }
 };
 template<class U, std::size_t size, class T> struct StaticArrayViewConverter<size, const U, StaticArray<size, const T>> {
-    template<class V = U> constexpr static typename std::enable_if<std::is_convertible<T*, V*>::value, StaticArrayView<size, const U>>::type from(const StaticArray<size, const T>& other) {
+    template<class V = U, typename std::enable_if<std::is_convertible<T*, V*>::value, int>::type = 0> constexpr static StaticArrayView<size, const U> from(const StaticArray<size, const T>& other) {
         static_assert(sizeof(T) == sizeof(U), "types are not compatible");
         return StaticArrayView<size, const T>(other.data());
     }
@@ -1053,7 +1058,9 @@ namespace std {
 #ifndef Corrade_Containers_StructuredBindings_StaticArray_h
 #define Corrade_Containers_StructuredBindings_StaticArray_h
 template<size_t size_, class T> struct tuple_size<Corrade::Containers::StaticArray<size_, T>>: integral_constant<size_t, size_> {};
+template<size_t size_, class T> struct tuple_size<const Corrade::Containers::StaticArray<size_, T>>: integral_constant<size_t, size_> {};
 template<size_t index, size_t size_, class T> struct tuple_element<index, Corrade::Containers::StaticArray<size_, T>> { typedef T type; };
+template<size_t index, size_t size_, class T> struct tuple_element<index, const Corrade::Containers::StaticArray<size_, T>> { typedef const T type; };
 #endif
 
 }

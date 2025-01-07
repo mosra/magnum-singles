@@ -13,19 +13,21 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    v2020.06-1846-gc4cdf (2025-01-07)
+    -   Adapted to changes in libc++ 19.1.0
     v2020.06-1454-gfc3b7 (2023-08-27)
     -   Compatibility with C++20 which removes the <ciso646> header
     v2019.01-115-ged348b26 (2019-03-27)
     -   Initial release
 
-    Generated from Corrade v2020.06-1454-gfc3b7 (2023-08-27), 77 / 481 LoC
+    Generated from Corrade v2020.06-1846-gc4cdf (2025-01-07), 81 / 181 LoC
 */
 
 /*
     This file is part of Corrade.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
-                2017, 2018, 2019, 2020, 2021, 2022, 2023
+                2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025
               Vladimír Vondruš <mosra@centrum.cz>
 
     Permission is hereby granted, free of charge, to any person obtaining a
@@ -68,7 +70,9 @@
 #ifndef Corrade_Utility_StlForwardVector_h
 #define Corrade_Utility_StlForwardVector_h
 
-#if defined(CORRADE_TARGET_LIBCXX) && _LIBCPP_VERSION >= 3900
+#if defined(CORRADE_TARGET_LIBCXX) && _LIBCPP_VERSION >= 190100
+#include <__fwd/vector.h>
+#elif defined(CORRADE_TARGET_LIBCXX) && _LIBCPP_VERSION >= 3900
 #include <iosfwd>
 #else
 #include <vector>

@@ -22,6 +22,9 @@
     `#define CORRADE_ARRAYVIEW_STL_SPAN_COMPATIBILITY` before including the
     file. Including it multiple times with different macros defined works too.
 
+    v2020.06-1846-gc4cdf (2025-01-07)
+    -   Added arraySize() overload for arrays as struct members
+    -   Structured bindings of const types now work even w/o <utility>
     v2020.06-1687-g6b5f (2024-06-29)
     -   Structured bindings for StaticArrayView on C++17
     v2020.06-1502-g147e (2023-09-11)
@@ -65,14 +68,14 @@
     v2019.01-41-g39c08d7c (2019-02-18)
     -   Initial release
 
-    Generated from Corrade v2020.06-1687-g6b5f (2024-06-29), 914 / 2026 LoC
+    Generated from Corrade v2020.06-1846-gc4cdf (2025-01-07), 923 / 2013 LoC
 */
 
 /*
     This file is part of Corrade.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
-                2017, 2018, 2019, 2020, 2021, 2022, 2023
+                2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025
               Vladimír Vondruš <mosra@centrum.cz>
     Copyright © 2022 Stanislaw Halik <sthalik@misaki.pl>
 
@@ -480,6 +483,10 @@ template<std::size_t size_, class T> constexpr std::size_t arraySize(T(&)[size_]
     return size_;
 }
 
+template<std::size_t size_, class T, class U> constexpr std::size_t arraySize(U(T::*)[size_]) {
+    return size_;
+}
+
 namespace Implementation {
     template<std::size_t, class, class> struct StaticArrayViewConverter;
     template<class> struct ErasedStaticArrayViewConverter;
@@ -775,7 +782,9 @@ namespace std {
 #ifndef Corrade_Containers_StructuredBindings_StaticArrayView_h
 #define Corrade_Containers_StructuredBindings_StaticArrayView_h
 template<size_t size_, class T> struct tuple_size<Corrade::Containers::StaticArrayView<size_, T>>: integral_constant<size_t, size_> {};
+template<size_t size_, class T> struct tuple_size<const Corrade::Containers::StaticArrayView<size_, T>>: integral_constant<size_t, size_> {};
 template<size_t index, size_t size_, class T> struct tuple_element<index, Corrade::Containers::StaticArrayView<size_, T>> { typedef T type; };
+template<size_t index, size_t size_, class T> struct tuple_element<index, const Corrade::Containers::StaticArrayView<size_, T>> { typedef const T type; };
 #endif
 
 }

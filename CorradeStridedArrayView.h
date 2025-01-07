@@ -20,6 +20,11 @@
     `#define CORRADE_STRUCTURED_BINDINGS` before including the file. Including
     it multiple times with different macros defined works too.
 
+    v2020.06-1846-gc4cdf (2025-01-07)
+    -   Worked around an issue where certain new Clang versions would do an OOB
+        access with negative strides on 32-bit builds (such as on Emscripten)
+    -   Fixed StridedDimensions structured bindings constexpr signature
+    -   Structured bindings of const types now work even w/o <utility>
     v2020.06-1687-g6b5f (2024-06-29)
     -   Structured bindings for StridedDimensions on C++17
     v2020.06-1454-gfc3b7 (2023-08-27)
@@ -58,16 +63,17 @@
     v2019.01-173-ge663b49c (2019-04-30)
     -   Initial release
 
-    Generated from Corrade v2020.06-1687-g6b5f (2024-06-29), 1313 / 2858 LoC
+    Generated from Corrade v2020.06-1846-gc4cdf (2025-01-07), 1327 / 2846 LoC
 */
 
 /*
     This file is part of Corrade.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
-                2017, 2018, 2019, 2020, 2021, 2022, 2023
+                2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025
               Vladimír Vondruš <mosra@centrum.cz>
     Copyright © 2022 Stanislaw Halik <sthalik@misaki.pl>
+    Copyright © 2024 Will Usher <will@willusher.io>
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the "Software"),
@@ -210,6 +216,11 @@ template<class T> constexpr T abs(T a) {
 
 }}
 
+#endif
+#if CORRADE_CXX_STANDARD >= 201402 && !defined(CORRADE_MSVC2015_COMPATIBILITY)
+#define CORRADE_CONSTEXPR14 constexpr
+#else
+#define CORRADE_CONSTEXPR14
 #endif
 #ifndef Corrade_Containers_StridedDimensions_h
 #define Corrade_Containers_StridedDimensions_h
@@ -969,7 +980,7 @@ template<unsigned dimensions> constexpr StridedArrayView<dimensions, const void>
 
 template<unsigned dimensions, class T> template<unsigned lessDimensions, class> StridedArrayView<dimensions, T>::StridedArrayView(const StridedArrayView<lessDimensions, T>& other) noexcept: _data{other._data}, _size{Corrade::NoInit}, _stride{Corrade::NoInit} {
     constexpr std::size_t extraDimensions = dimensions - lessDimensions;
-    const std::size_t stride = other._size._data[0]*other._stride._data[0];
+    const std::ptrdiff_t stride = std::ptrdiff_t(other._size._data[0])*other._stride._data[0];
     for(std::size_t i = 0; i != extraDimensions; ++i) {
         _size._data[i] = 1;
         _stride._data[i] = stride;
@@ -984,7 +995,8 @@ template<unsigned dimensions, class T> template<unsigned dimension> bool Strided
     static_assert(dimension < dimensions, "dimension out of range");
     std::size_t nextDimensionSize = sizeof(T);
     for(std::size_t i = dimensions; i != dimension; --i) {
-        if(std::size_t(_stride._data[i - 1]) != nextDimensionSize) return false;
+        if(std::size_t(_stride._data[i - 1]) != nextDimensionSize)
+            return false;
         nextDimensionSize *= _size._data[i - 1];
     }
 
@@ -1025,12 +1037,12 @@ namespace Implementation {
             return StridedArrayView<dimensions - 1, T>{
                 Size<dimensions - 1>(size._data + 1, typename Implementation::GenerateSequence<dimensions - 1>::Type{}),
                 Stride<dimensions - 1>(stride._data + 1, typename Implementation::GenerateSequence<dimensions - 1>::Type{}),
-                static_cast<typename std::conditional<std::is_const<T>::value, const char, char>::type*>(data) + i*stride._data[0]};
+                static_cast<typename std::conditional<std::is_const<T>::value, const char, char>::type*>(data) + std::ptrdiff_t(i)*stride._data[0]};
         }
     };
     template<class T> struct StridedElement<1, T> {
         static T& get(typename std::conditional<std::is_const<T>::value, const void, void>::type* data, const Size1D&, const Stride1D& stride, std::size_t i) {
-            return *reinterpret_cast<T*>(static_cast<typename std::conditional<std::is_const<T>::value, const char, char>::type*>(data) + i*stride._data[0]);
+            return *reinterpret_cast<T*>(static_cast<typename std::conditional<std::is_const<T>::value, const char, char>::type*>(data) + std::ptrdiff_t(i)*stride._data[0]);
         }
     };
 }
@@ -1055,7 +1067,7 @@ template<unsigned dimensions, class T> T& StridedArrayView<dimensions, T>::opera
     for(std::size_t j = 0; j != dimensions; ++j) {
         CORRADE_DEBUG_ASSERT(i._data[j] < _size._data[j],
             "Containers::StridedArrayView::operator[](): index" << i << "out of range for" << _size << "elements", *reinterpret_cast<T*>(static_cast<ArithmeticType*>(_data)));
-        data += i._data[j]*_stride._data[j];
+        data += std::ptrdiff_t(i._data[j])*_stride._data[j];
     }
 
     return *reinterpret_cast<T*>(data);
@@ -1070,7 +1082,7 @@ template<unsigned dimensions, class T> StridedArrayView<dimensions, T> StridedAr
     Containers::Size<dimensions> size = _size;
     size._data[0] = std::size_t(end - begin);
     return StridedArrayView<dimensions, T>{size, _stride,
-        static_cast<ArithmeticType*>(_data) + begin*_stride._data[0]};
+        static_cast<ArithmeticType*>(_data) + std::ptrdiff_t(begin)*_stride._data[0]};
 }
 
 template<unsigned dimensions, class T> template<unsigned newDimensions> StridedArrayView<newDimensions, T> StridedArrayView<dimensions, T>::slice(const Containers::Size<dimensions>& begin, const Containers::Size<dimensions>& end) const {
@@ -1086,7 +1098,7 @@ template<unsigned dimensions, class T> template<unsigned newDimensions> StridedA
             << Utility::Debug::nospace << end << Utility::Debug::nospace
             << "] out of range for" << _size << "elements in dimension" << i,
             {});
-        data += begin._data[i]*_stride._data[i];
+        data += std::ptrdiff_t(begin._data[i])*_stride._data[i];
     }
 
     for(std::size_t i = 0; i != minDimensions; ++i) {
@@ -1198,7 +1210,7 @@ template<unsigned dimensions, class T> StridedArrayView<dimensions, T> StridedAr
     for(std::size_t dimension = 0; dimension != dimensions; ++dimension) {
         std::size_t divisor;
         if(step._data[dimension] < 0) {
-            data = static_cast<ArithmeticType*>(data) + _stride._data[dimension]*(_size._data[dimension] ? _size._data[dimension] - 1 : 0);
+            data = static_cast<ArithmeticType*>(data) + _stride._data[dimension]*std::ptrdiff_t(_size._data[dimension] ? _size._data[dimension] - 1 : 0);
             divisor = -step._data[dimension];
         } else divisor = step._data[dimension];
 
@@ -1223,7 +1235,7 @@ template<unsigned dimensions, class T> template<unsigned dimensionA, unsigned di
 template<unsigned dimensions, class T> template<unsigned dimension> StridedArrayView<dimensions, T> StridedArrayView<dimensions, T>::flipped() const {
     static_assert(dimension < dimensions, "dimension out of range");
 
-    ErasedType* data = static_cast<ArithmeticType*>(_data) + _stride._data[dimension]*(_size._data[dimension] ? _size._data[dimension] - 1 : 0);
+    ErasedType* data = static_cast<ArithmeticType*>(_data) + _stride._data[dimension]*std::ptrdiff_t(_size._data[dimension] ? _size._data[dimension] - 1 : 0);
     Containers::Stride<dimensions> stride = _stride;
     stride._data[dimension] *= -1;
     return StridedArrayView<dimensions, T>{_size, stride, data};
@@ -1260,7 +1272,7 @@ template<unsigned dimensions, class T> template<unsigned dimension, unsigned cou
     const std::ptrdiff_t baseStride = _stride._data[dimension];
     for(std::size_t i = count; i != 0; --i) {
         size_._data[dimension + i - 1] = size._data[i - 1];
-        stride_._data[dimension + i - 1] = baseStride*totalSize;
+        stride_._data[dimension + i - 1] = baseStride*std::ptrdiff_t(totalSize);
         totalSize *= size._data[i - 1];
     }
     CORRADE_ASSERT(totalSize == _size._data[dimension],
@@ -1288,7 +1300,7 @@ template<unsigned dimensions, class T> template<unsigned dimension, unsigned cou
     const std::ptrdiff_t baseStride = _stride._data[dimension + count - 1];
     for(std::size_t i = dimension + count; i != dimension; --i) {
         CORRADE_ASSERT(_stride._data[i - 1] == std::ptrdiff_t(totalSize)*baseStride,
-            "Containers::StridedArrayView::collapsed(): expected dimension" << i - 1 << "stride to be" << totalSize*baseStride << "but got" << _stride._data[i - 1], {});
+            "Containers::StridedArrayView::collapsed(): expected dimension" << i - 1 << "stride to be" << std::ptrdiff_t(totalSize)*baseStride << "but got" << _stride._data[i - 1], {});
         totalSize *= _size._data[i - 1];
     }
     size_._data[dimension] = totalSize;
@@ -1306,7 +1318,9 @@ namespace std {
 #ifndef Corrade_Containers_StructuredBindings_StridedDimensions_h
 #define Corrade_Containers_StructuredBindings_StridedDimensions_h
 template<unsigned dimensions, class T> struct tuple_size<Corrade::Containers::StridedDimensions<dimensions, T>>: integral_constant<size_t, dimensions> {};
+template<unsigned dimensions, class T> struct tuple_size<const Corrade::Containers::StridedDimensions<dimensions, T>>: integral_constant<size_t, dimensions> {};
 template<size_t index, unsigned dimensions, class T> struct tuple_element<index, Corrade::Containers::StridedDimensions<dimensions, T>> { typedef T type; };
+template<size_t index, unsigned dimensions, class T> struct tuple_element<index, const Corrade::Containers::StridedDimensions<dimensions, T>> { typedef const T type; };
 #endif
 
 }

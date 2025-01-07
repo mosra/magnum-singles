@@ -23,6 +23,9 @@
     `#define CORRADE_UTILITY_EXPORT` as appropriate. To enable the IFUNC
     functionality, `#define CORRADE_CPU_USE_IFUNC` before including the file.
 
+    v2020.06-1846-gc4cdf (2025-01-07)
+    -   SFINAE is now done in template args as that's simpler for the compiler
+    -   Fixed warnings on ARM with C++20
     v2020.06-1687-g6b5f (2024-06-29)
     -   FreeBSD and Emscripten compatibility fixes
     v2020.06-1454-gfc3b7 (2023-08-27)
@@ -41,14 +44,14 @@
     v2020.06-1015-g8cbd6 (2022-08-02)
     -   Initial release
 
-    Generated from Corrade v2020.06-1687-g6b5f (2024-06-29), 1716 / 1995 LoC
+    Generated from Corrade v2020.06-1846-gc4cdf (2025-01-07), 1730 / 1978 LoC
 */
 
 /*
     This file is part of Corrade.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
-                2017, 2018, 2019, 2020, 2021, 2022, 2023
+                2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025
               Vladimír Vondruš <mosra@centrum.cz>
     Copyright © 2023 Robert Clausecker <fuz@FreeBSD.org>
 
@@ -81,6 +84,9 @@
 #endif
 #ifdef __APPLE__
 #define CORRADE_TARGET_APPLE
+#endif
+#if defined(_MSC_VER) && _MSC_VER < 1920
+#define CORRADE_MSVC2017_COMPATIBILITY
 #endif
 
 #ifndef Corrade_configure_h
@@ -592,9 +598,17 @@ template<unsigned int value> struct Tags {
 
     constexpr explicit Tags(InitT) {}
 
+    #ifndef CORRADE_MSVC2017_COMPATIBILITY
+    template<unsigned int otherValue, typename std::enable_if<IsTagConversionAllowed<value, otherValue>::Value, int>::type = 0> constexpr Tags(Tags<otherValue>) {}
+    #else
     template<unsigned int otherValue> constexpr Tags(Tags<otherValue>, typename std::enable_if<IsTagConversionAllowed<value, otherValue>::Value>::type* = {}) {}
+    #endif
 
+    #ifndef CORRADE_MSVC2017_COMPATIBILITY
+    template<class T, typename std::enable_if<IsSingleTagConversionAllowed<Value, TypeTraits<T>::Index>::Value, int>::type = 0> constexpr Tags(T) {}
+    #else
     template<class T> constexpr Tags(T, typename std::enable_if<IsSingleTagConversionAllowed<Value, TypeTraits<T>::Index>::Value>::type* = {}) {}
+    #endif
 
     template<unsigned int otherValue> constexpr Tags<value | otherValue> operator|(Tags<otherValue>) const {
         return Tags<value | otherValue>{Init};
@@ -1612,14 +1626,14 @@ namespace Implementation {
         if(caps & (1 << 12) /*HWCAP_NEON*/) out |= TypeTraits<NeonT>::Index;
         if(caps & (1 << 16) /*HWCAP_VFPv4*/) out |= TypeTraits<NeonFmaT>::Index;
         #else
-        out |=
+        out |= 0
             #ifdef CORRADE_TARGET_NEON
-            TypeTraits<NeonT>::Index|
+            |TypeTraits<NeonT>::Index
             #endif
             #ifdef CORRADE_TARGET_NEON_FMA
-            TypeTraits<NeonFmaT>::Index|
+            |TypeTraits<NeonFmaT>::Index
             #endif
-            0;
+            ;
         if(caps & (1 << 10) /*HWCAP_ASIMDHP*/) out |= TypeTraits<NeonFp16T>::Index;
         #endif
         return Features{out};
@@ -1683,14 +1697,14 @@ Features runtimeFeatures() {
     #ifdef CORRADE_TARGET_32BIT
     if(appleSysctlByName("hw.optional.neon")) out |= TypeTraits<NeonT>::Index;
     #else
-    out |=
+    out |= 0
         #ifdef CORRADE_TARGET_NEON
-        TypeTraits<NeonT>::Index|
+        |TypeTraits<NeonT>::Index
         #endif
         #ifdef CORRADE_TARGET_NEON_FMA
-        TypeTraits<NeonFmaT>::Index|
+        |TypeTraits<NeonFmaT>::Index
         #endif
-        0;
+        ;
     #endif
     if(appleSysctlByName("hw.optional.neon_fp16")) {
         #ifdef CORRADE_TARGET_32BIT
