@@ -111,6 +111,8 @@ jobs:
           ./a.out
           $COMPILE MagnumMath.cpp
           ./a.out
+          $COMPILE MagnumMath.cpp -DMAGNUM_MATH_STL_COMPATIBILITY
+          ./a.out
 
 workflows:
   version: 2
