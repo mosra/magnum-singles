@@ -113,6 +113,10 @@ jobs:
           ./a.out
           $COMPILE MagnumMath.cpp -DMAGNUM_MATH_STL_COMPATIBILITY
           ./a.out
+          $COMPILE MagnumMathBatch.cpp
+          ./a.out
+          $COMPILE MagnumMeshTools.cpp
+          ./a.out
 
 workflows:
   version: 2

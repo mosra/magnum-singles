@@ -36,8 +36,8 @@ Library         | LoC | PpLoC<sup>[1]</sup>     | Description
 **[CorradeStlForwardVector.h](CorradeStlForwardVector.h)** | 81 | 181<sup>[3]</sup> | [Corrade's forward declaration for `std::vector`](https://doc.magnum.graphics/corrade/StlForwardVector_8h.html), a lightweight alternative to the full [`<vector>`](https://en.cppreference.com/w/cpp/header/tuple) (9k PpLOC<sup>[1]</sup>) where supported
 **[CorradeStlMath.h](CorradeStlMath.h)** | 73 | 3301<sup>[4]</sup> | [Corrade's optimized `<cmath>`](https://doc.magnum.graphics/corrade/StlMath_8h.html), without the heavy C++17 additions (which is otherwise 11k PpLOC<sup>[4]</sup>)
 **[MagnumMath.hpp](MagnumMath.hpp)** | 8388<sup>[2]</sup> | 9812 | [Math](https://doc.magnum.graphics/magnum/namespaceMagnum_1_1Math.html) namespace, a full-featured graphics-oriented linear algebra library. Depends on `CorradePair.h`.
-**[MagnumMathBatch.hpp](MagnumMathBatch.hpp)** | 1320<sup>[2]</sup> | 11185 | [Math](https://doc.magnum.graphics/magnum/namespaceMagnum_1_1Math.html) namespace, batch APIs. The implementation depends on `CorradeStridedArrayView.h` and `MagnumMath.hpp`.
-**[MagnumMeshTools.hpp](MagnumMeshTools.hpp)** | 765<sup>[2]</sup> | 283 | [MeshTools](https://doc.magnum.graphics/magnum/namespaceMagnum_1_1MeshTools.html) namespace, algorithms for dealing with mesh data. The implementation depends on `CorradeStridedArrayView.h` and `MagnumMath.hpp`.
+**[MagnumMathBatch.hpp](MagnumMathBatch.hpp)** | 1318<sup>[2]</sup> | 11185 | [Math](https://doc.magnum.graphics/magnum/namespaceMagnum_1_1Math.html) namespace, batch APIs. The implementation depends on `CorradeStridedArrayView.h` and `MagnumMath.hpp`.
+**[MagnumMeshTools.hpp](MagnumMeshTools.hpp)** | 765<sup>[2]</sup> | 283 | [MeshTools](https://doc.magnum.graphics/magnum/namespaceMagnum_1_1MeshTools.html) namespace, algorithms for dealing with mesh data. Depends on `CorradeStridedArrayView.h`, the implementation depends on `CorradeArray.h` and `MagnumMathBatch.hpp`.
 
 <sup>[1]</sup> — lines of code after a preprocessor run, with system includes
 expanded. Gathered using GCC 14.2 and libstdc++, unless said otherwise.
