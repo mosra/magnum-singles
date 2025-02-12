@@ -6,8 +6,7 @@
     https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1BasicString.html
     https://doc.magnum.graphics/corrade/classCorrade_1_1Containers_1_1BasicStringView.html
 
-    Depends on CorradeEnumSet.h, the implementation depends on CorradePair.h
-    and CorradeCpu.hpp.
+    Depends on CorradeEnumSet.h, the implementation depends on CorradeCpu.hpp.
 
     This is a single-header library generated from the Corrade project. With
     the goal being easy integration, it's deliberately free of all comments
@@ -37,6 +36,8 @@
     `#define CORRADE_STRING_STL_VIEW_COMPATIBILITY` before including the file.
     Including it multiple times with different macros defined works too.
 
+    v2020.06-1864-g8b00 (2025-02-12)
+    -   Removed dependency on Containers::Pair
     v2020.06-1846-gc4cdf (2025-01-07)
     -   Fixed embarrassing bugs in the NEON and WASM SIMD code paths for find()
     -   SFINAE is now done in template args as that's simpler for the compiler
@@ -52,7 +53,7 @@
     v2020.06-1502-g147e (2023-09-11)
     -   Initial release
 
-    Generated from Corrade v2020.06-1846-gc4cdf (2025-01-07), 2517 / 2176 LoC
+    Generated from Corrade v2020.06-1864-g8b00 (2025-02-12), 2523 / 2179 LoC
 */
 
 /*
@@ -135,7 +136,6 @@ namespace Corrade { namespace Containers {
 class String;
 template<class> class BasicStringView;
 typedef BasicStringView<const char> StringView;
-template<class, class> class Pair;
 
 }}
 #endif
@@ -842,7 +842,11 @@ class CORRADE_UTILITY_EXPORT String {
         CORRADE_UTILITY_LOCAL void construct(const char* data, std::size_t size);
         CORRADE_UTILITY_LOCAL void copyConstruct(const String& other);
         CORRADE_UTILITY_LOCAL void destruct();
-        CORRADE_UTILITY_LOCAL Pair<const char*, std::size_t> dataInternal() const;
+        struct Data {
+            const char* data;
+            std::size_t size;
+        };
+        CORRADE_UTILITY_LOCAL Data dataInternal() const;
 
         MutableStringView sliceSizePointerInternal(char* begin, std::size_t size);
         StringView sliceSizePointerInternal(const char* begin, std::size_t size) const;
@@ -885,17 +889,20 @@ class CORRADE_UTILITY_EXPORT String {
 
 namespace Corrade { namespace Containers { namespace Implementation {
 
-template<> struct CORRADE_UTILITY_EXPORT StringConverter<std::string> {
+template<> struct
+StringConverter<std::string> {
     static String from(const std::string& other);
     static std::string to(const String& other);
 };
 
-template<> struct CORRADE_UTILITY_EXPORT StringViewConverter<const char, std::string> {
+template<> struct
+StringViewConverter<const char, std::string> {
     static StringView from(const std::string& other);
     static std::string to(StringView other);
 };
 
-template<> struct CORRADE_UTILITY_EXPORT StringViewConverter<char, std::string> {
+template<> struct
+StringViewConverter<char, std::string> {
     static MutableStringView from(std::string& other);
     static std::string to(MutableStringView other);
 };
@@ -1016,7 +1023,6 @@ template<> struct StringViewConverter<char, std::string_view> {
     CORRADE_INTERNAL_ASSERT_UNREACHABLE()
 #endif
 
-#include "CorradePair.h"
 #include "CorradeCpu.hpp"
 
 #if ((defined(CORRADE_ENABLE_SSE2) || defined(CORRADE_ENABLE_AVX)) && defined(CORRADE_ENABLE_BMI1)) || (defined(CORRADE_ENABLE_AVX) && defined(CORRADE_ENABLE_POPCNT))
@@ -1966,7 +1972,7 @@ inline void String::destruct() {
     else delete[] _large.data;
 }
 
-inline Pair<const char*, std::size_t> String::dataInternal() const {
+inline String::Data String::dataInternal() const {
     if(_small.size & Implementation::SmallStringBit)
         return {_small.data, _small.size & ~SmallSizeMask};
     return {_large.data, _large.size & ~LargeSizeMask};
@@ -2035,11 +2041,11 @@ String::String(AllocatedInitT, String&& other) {
 }
 
 String::String(AllocatedInitT, const String& other) {
-    const Pair<const char*, std::size_t> data = other.dataInternal();
-    const std::size_t sizePlusOne = data.second() + 1;
-    _large.size = data.second();
+    const Data data = other.dataInternal();
+    const std::size_t sizePlusOne = data.size + 1;
+    _large.size = data.size;
     _large.data = new char[sizePlusOne];
-    std::memcpy(_large.data, data.first(), sizePlusOne);
+    std::memcpy(_large.data, data.data, sizePlusOne);
     _large.deleter = nullptr;
 }
 
