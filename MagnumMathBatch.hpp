@@ -24,11 +24,15 @@
     If you need the deinlined symbols to be exported from a shared library,
     `#define MAGNUM_EXPORT` as appropriate.
 
+    v2020.06-3290-g454e9 (2025-04-11)
+    -   Include guard for the implementation part to prevent double definitions
+    -   Cleanup and unification of SFINAE code, it's now done in template args
+        as that's simpler for the compiler
     v2020.06-3128-g47b22 (2025-01-07)
     -   Initial release
 
-    Generated from Corrade v2020.06-1847-g9be0 (2025-01-07) and
-        Magnum v2020.06-3128-g47b22 (2025-01-07), 1318 / 11185 LoC
+    Generated from Corrade v2020.06-1890-g77f9f (2025-04-11) and
+        Magnum v2020.06-3290-g454e9 (2025-04-11), 1323 / 11405 LoC
 */
 
 /*
@@ -191,7 +195,7 @@ template<class T, std::size_t size> inline T max(const T(&array)[size]) {
 }
 
 namespace Implementation {
-    template<class T> inline typename std::enable_if<IsScalar<T>::value, void>::type minmax(T& min, T& max, T value) {
+    template<class T, typename std::enable_if<IsScalar<T>::value, int>::type = 0> inline void minmax(T& min, T& max, T value) {
         if(value < min)
             min = value;
         else if(value > max)
@@ -377,7 +381,8 @@ MAGNUM_EXPORT void castInto(const Containers::StridedArrayView2D<const Double>& 
 }}
 
 #endif
-#ifdef MAGNUM_MATH_BATCH_IMPLEMENTATION
+#if defined(MAGNUM_MATH_BATCH_IMPLEMENTATION) && !defined(MagnumMathBatch_hpp_implementation)
+#define MagnumMathBatch_hpp_implementation
 namespace Magnum { namespace Math { namespace {
 
 constexpr UnsignedInt HalfMantissaTable[2048] = {

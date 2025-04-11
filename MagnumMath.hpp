@@ -32,6 +32,11 @@
     `#define MAGNUM_MATH_EIGEN_INTEGRATION` before including the file.
     Including it multiple times with different macros defined works as well.
 
+    v2020.06-3290-g454e9 (2025-04-11)
+    -   New Color4::premultiplied() and unpremultiplied() APIs
+    -   Include guard for the implementation part to prevent double definitions
+    -   Cleanup and unification of SFINAE code, it's now done in template args
+        as that's simpler for the compiler
     v2020.06-3125-g632a2 (2025-01-07)
     -   New Nanoseconds and Seconds types along with _nsec, _usec, _msec and
         _sec literals and opt-in std::chrono compatibility
@@ -121,9 +126,9 @@
     v2019.01-241-g93686746a (2019-04-03)
     -   Initial release
 
-    Generated from Corrade v2020.06-1846-gc4cdf (2025-01-07),
-        Magnum v2020.06-3125-g632a2 (2025-01-07) and
-        Magnum Integration v2020.06-282-ged27 (2025-01-05), 8388 / 9812 LoC
+    Generated from Corrade v2020.06-1890-g77f9f (2025-04-11),
+        Magnum v2020.06-3290-g454e9 (2025-04-11) and
+        Magnum Integration v2020.06-291-g1a42d (2025-03-04), 8496 / 9985 LoC
 */
 
 /*
@@ -691,11 +696,15 @@ template<class T> struct TypeTraits: Implementation::TypeTraitsDefault<T> {
 
 };
 
-template<class T> inline typename std::enable_if<IsScalar<T>::value, bool>::type equal(T a, T b) {
+template<class T
+    , typename std::enable_if<IsScalar<T>::value, int>::type = 0
+> inline bool equal(T a, T b) {
     return TypeTraits<T>::equals(a, b);
 }
 
-template<class T> inline typename std::enable_if<IsScalar<T>::value, bool>::type notEqual(T a, T b) {
+template<class T
+    , typename std::enable_if<IsScalar<T>::value, int>::type = 0
+> inline bool notEqual(T a, T b) {
     return !TypeTraits<T>::equals(a, b);
 }
 
@@ -1003,19 +1012,22 @@ template<template<class> class Derived, class T> class Unit {
             return Unit<Derived, T>{value._value*number};
         }
 
-        template<class FloatingPoint, class Integral = T> typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, Unit<Derived, T>&>::type
-        operator*=(FloatingPoint number) {
+        template<class FloatingPoint
+            , class Integral = T, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, int>::type = 0
+        > Unit<Derived, T>& operator*=(FloatingPoint number) {
             _value = T(_value*number);
             return *this;
         }
 
-        template<class FloatingPoint, class Integral = T> constexpr typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, Unit<Derived, T>>::type
-        operator*(FloatingPoint number) const {
+        template<class FloatingPoint, class Integral = T
+            , typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, int>::type = 0
+        > constexpr Unit<Derived, T> operator*(FloatingPoint number) const {
             return Unit<Derived, T>{T(_value*number)};
         }
 
-        template<class FloatingPoint, class Integral = T> friend constexpr typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, Unit<Derived, T>>::type
-        operator*(FloatingPoint number, const Unit<Derived, T>& value) {
+        template<class FloatingPoint
+            , class Integral = T, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, int>::type = 0
+        > friend constexpr Unit<Derived, T> operator*(FloatingPoint number, const Unit<Derived, T>& value) {
             return Unit<Derived, T>{T(value._value*number)};
         }
 
@@ -1028,14 +1040,16 @@ template<template<class> class Derived, class T> class Unit {
             return Unit<Derived, T>(_value/number);
         }
 
-        template<class FloatingPoint, class Integral = T> typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, Unit<Derived, T>&>::type
-        operator/=(FloatingPoint number) {
+        template<class FloatingPoint
+            , class Integral = T, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, int>::type = 0
+        > Unit<Derived, T>& operator/=(FloatingPoint number) {
             _value = T(_value/number);
             return *this;
         }
 
-        template<class FloatingPoint, class Integral = T> constexpr typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, Unit<Derived, T>>::type
-        operator/(FloatingPoint number) const {
+        template<class FloatingPoint
+            , class Integral = T, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, int>::type = 0
+        > constexpr Unit<Derived, T> operator/(FloatingPoint number) const {
             return Unit<Derived, T>{T(_value/number)};
         }
 
@@ -1043,14 +1057,14 @@ template<template<class> class Derived, class T> class Unit {
             return _value/other._value;
         }
 
-        template<class Integral = T> typename std::enable_if<std::is_integral<Integral>::value, Unit<Derived, T>&>::type
-        operator%=(Unit<Derived, T> other) {
+        template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0>
+        Unit<Derived, T>& operator%=(Unit<Derived, T> other) {
             _value %= other._value;
             return *this;
         }
 
-        template<class Integral = T> constexpr typename std::enable_if<std::is_integral<Integral>::value, Unit<Derived, T>>::type
-        operator%(Unit<Derived, T> other) const {
+        template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0>
+        constexpr Unit<Derived, T> operator%(Unit<Derived, T> other) const {
             return Unit<Derived, T>{_value%other._value};
         }
 
@@ -1059,7 +1073,7 @@ template<template<class> class Derived, class T> class Unit {
 };
 
 #ifdef CORRADE_MSVC2015_COMPATIBILITY
-template<template<class> class Derived, class FloatingPoint, class Integral> constexpr typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, Unit<Derived, Integral>>::type operator*(FloatingPoint number, const Unit<Derived, Integral>& value) {
+template<template<class> class Derived, class FloatingPoint, class Integral, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, int>::type = 0> constexpr Unit<Derived, Integral> operator*(FloatingPoint number, const Unit<Derived, Integral>& value) {
     return value*number;
 }
 #endif
@@ -1298,9 +1312,17 @@ template<std::size_t size> class BitVector {
 
         explicit BitVector(Magnum::NoInitT) noexcept {}
 
-        template<class ...T, class U = typename std::enable_if<sizeof...(T)+1 == DataSize, bool>::type> constexpr /*implicit*/ BitVector(UnsignedByte first, T... next) noexcept: _data{first, UnsignedByte(next)...} {}
+        template<class ...T
+            #ifndef CORRADE_MSVC2017_COMPATIBILITY
+            , typename std::enable_if<sizeof...(T)+1 == DataSize, int>::type = 0
+            #else
+            , class = typename std::enable_if<sizeof...(T)+1 == DataSize>::type
+            #endif
+        > constexpr /*implicit*/ BitVector(UnsignedByte first, T... next) noexcept: _data{first, UnsignedByte(next)...} {}
 
-        template<class T, class U = typename std::enable_if<std::is_same<bool, T>::value && size != 1, bool>::type> constexpr explicit BitVector(T value) noexcept: BitVector(typename Containers::Implementation::GenerateSequence<DataSize>::Type{}, value ? FullSegmentMask : 0) {}
+        template<class T
+            , typename std::enable_if<std::is_same<bool, T>::value && size != 1, int>::type = 0
+        > constexpr explicit BitVector(T value) noexcept: BitVector(typename Containers::Implementation::GenerateSequence<DataSize>::Type{}, value ? FullSegmentMask : 0) {}
 
         template<class U, class = decltype(Implementation::BitVectorConverter<size, U>::from(std::declval<U>()))> constexpr explicit BitVector(const U& other) noexcept: BitVector{Implementation::BitVectorConverter<size, U>::from(other)} {}
 
@@ -1448,16 +1470,16 @@ template<std::size_t size> inline BitVector<size> BitVector<size>::operator~() c
 
 namespace Magnum { namespace Math {
 
-template<class T> inline typename std::enable_if<IsScalar<T>::value, bool>::type isNan(T value) {
+template<class T, typename std::enable_if<IsScalar<T>::value, int>::type = 0> inline bool isNan(T value) {
     return std::isnan(UnderlyingTypeOf<T>(value));
 }
-template<class T> constexpr typename std::enable_if<IsScalar<T>::value, T>::type min(T value, T min) {
+template<class T, typename std::enable_if<IsScalar<T>::value, int>::type = 0> constexpr T min(T value, T min) {
     return min < value ? min : value;
 }
-template<class T> constexpr typename std::enable_if<IsScalar<T>::value, T>::type max(T value, T max) {
+template<class T, typename std::enable_if<IsScalar<T>::value, int>::type = 0> constexpr T max(T value, T max) {
     return value < max ? max : value;
 }
-template<class T> constexpr typename std::enable_if<IsScalar<T>::value, T>::type clamp(T value, T min, T max) {
+template<class T, typename std::enable_if<IsScalar<T>::value, int>::type = 0> constexpr T clamp(T value, T min, T max) {
     return Math::min(Math::max(value, min), max);
 }
 
@@ -1492,9 +1514,9 @@ template<std::size_t size, class T> inline T dot(const Vector<size, T>& a, const
     return out;
 }
 
-template<std::size_t size, class FloatingPoint> inline
-typename std::enable_if<std::is_floating_point<FloatingPoint>::value, Rad<FloatingPoint>>::type
-angle(const Vector<size, FloatingPoint>& normalizedA, const Vector<size, FloatingPoint>& normalizedB) {
+template<std::size_t size, class FloatingPoint
+    , typename std::enable_if<std::is_floating_point<FloatingPoint>::value, int>::type = 0
+> inline Rad<FloatingPoint> angle(const Vector<size, FloatingPoint>& normalizedA, const Vector<size, FloatingPoint>& normalizedB) {
     CORRADE_DEBUG_ASSERT(normalizedA.isNormalized() && normalizedB.isNormalized(),
         "Math::angle(): vectors" << normalizedA << "and" << normalizedB << "are not normalized", {});
     return Rad<FloatingPoint>(std::acos(clamp(dot(normalizedA, normalizedB), FloatingPoint(-1), FloatingPoint(1))));
@@ -1527,7 +1549,9 @@ template<std::size_t size, class T> class Vector {
 
         explicit Vector(Magnum::NoInitT) noexcept {}
 
-        template<class ...U, class V = typename std::enable_if<sizeof...(U)+1 == size, T>::type> constexpr /*implicit*/ Vector(T first, U... next) noexcept: _data{first, next...} {}
+        template<class ...U
+            , typename std::enable_if<sizeof...(U)+1 == size, int>::type = 0
+        > constexpr /*implicit*/ Vector(T first, U... next) noexcept: _data{first, next...} {}
 
         #if !defined(CORRADE_TARGET_GCC) || defined(CORRADE_TARGET_CLANG) || __GNUC__ >= 5
         template<std::size_t size_> constexpr explicit Vector(const T(&data)[size_]) noexcept: Vector{typename Containers::Implementation::GenerateSequence<size_>::Type{}, data} {
@@ -1537,7 +1561,7 @@ template<std::size_t size, class T> class Vector {
         constexpr explicit Vector(const T(&data)[size]) noexcept: Vector{typename Containers::Implementation::GenerateSequence<size>::Type{}, data} {}
         #endif
 
-        template<class U, class V = typename std::enable_if<std::is_same<T, U>::value && size != 1, T>::type> constexpr explicit Vector(U value) noexcept: Vector(typename Containers::Implementation::GenerateSequence<size>::Type{}, value) {}
+        template<class U, typename std::enable_if<std::is_same<T, U>::value && size != 1, int>::type = 0> constexpr explicit Vector(U value) noexcept: Vector(typename Containers::Implementation::GenerateSequence<size>::Type{}, value) {}
 
         template<class U> constexpr explicit Vector(const Vector<size, U>& other) noexcept: Vector(typename Containers::Implementation::GenerateSequence<size>::Type{}, other) {}
 
@@ -1584,8 +1608,8 @@ template<std::size_t size, class T> class Vector {
 
         constexpr Vector<size, T> operator+() const { return *this; }
 
-        template<class U = T> constexpr typename std::enable_if<std::is_signed<U>::value, Vector<size, T>>::type
-        operator-() const {
+        template<class U = T, typename std::enable_if<std::is_signed<U>::value, int>::type = 0>
+        constexpr Vector<size, T> operator-() const {
             return negateInternal(typename Containers::Implementation::GenerateSequence<size>::Type{});
         }
 
@@ -1629,20 +1653,24 @@ template<std::size_t size, class T> class Vector {
             return vector*scalar;
         }
 
-        template<class FloatingPoint, class Integral = T> typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, Vector<size, T>&>::type
-        operator*=(FloatingPoint scalar) {
+        template<class FloatingPoint
+            , class Integral = T, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, int>::type = 0
+        > Vector<size, T>& operator*=(FloatingPoint scalar) {
             for(std::size_t i = 0; i != size; ++i)
                 _data[i] = T(_data[i]*scalar);
 
             return *this;
         }
 
-        template<class FloatingPoint, class Integral = T> constexpr typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, Vector<size, T>>::type
-        operator*(FloatingPoint scalar) const {
+        template<class FloatingPoint
+            , class Integral = T, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, int>::type = 0
+        > constexpr Vector<size, T> operator*(FloatingPoint scalar) const {
             return multiplyIntegerInternal(scalar, typename Containers::Implementation::GenerateSequence<size>::Type{});
         }
 
-        template<class FloatingPoint, class Integral = T> friend constexpr typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, Vector<size, T>>::type
+        template<class FloatingPoint
+            , class Integral = T, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, int>::type = 0
+        > friend constexpr Vector<size, T>
         operator*(FloatingPoint scalar, const Vector<size, T>& vector) {
             return vector*scalar;
         }
@@ -1665,16 +1693,18 @@ template<std::size_t size, class T> class Vector {
             return divideInternal(scalar, vector, typename Containers::Implementation::GenerateSequence<size>::Type{});
         }
 
-        template<class FloatingPoint, class Integral = T> typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, Vector<size, T>&>::type
-        operator/=(FloatingPoint scalar) {
+        template<class FloatingPoint
+            , class Integral = T, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, int>::type = 0
+        > Vector<size, T>& operator/=(FloatingPoint scalar) {
             for(std::size_t i = 0; i != size; ++i)
                 _data[i] = T(_data[i]/scalar);
 
             return *this;
         }
 
-        template<class FloatingPoint, class Integral = T> constexpr typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, Vector<size, T>>::type
-        operator/(FloatingPoint scalar) const {
+        template<class FloatingPoint
+            , class Integral = T, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, int>::type = 0
+        > constexpr Vector<size, T> operator/(FloatingPoint scalar) const {
             return divideIntegerInternal(scalar, typename Containers::Implementation::GenerateSequence<size>::Type{});
         }
 
@@ -1689,8 +1719,9 @@ template<std::size_t size, class T> class Vector {
             return multiplyInternal(other, typename Containers::Implementation::GenerateSequence<size>::Type{});
         }
 
-        template<class FloatingPoint, class Integral = T> typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, Vector<size, T>&>::type
-        operator*=(const Vector<size, FloatingPoint>& other) {
+        template<class FloatingPoint
+            , class Integral = T, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, int>::type = 0
+        > Vector<size, T>& operator*=(const Vector<size, FloatingPoint>& other) {
             for(std::size_t i = 0; i != size; ++i)
                 _data[i] = T(_data[i]*other._data[i]);
 
@@ -1698,13 +1729,13 @@ template<std::size_t size, class T> class Vector {
         }
 
         template<class FloatingPoint
-            , class Integral = T, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value>::type* = nullptr
+            , class Integral = T, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, int>::type = 0
         > constexpr Vector<size, T> operator*(const Vector<size, FloatingPoint>& other) const {
             return multiplyIntegerInternal(other, typename Containers::Implementation::GenerateSequence<size>::Type{});
         }
 
         template<class Integral
-            , class FloatingPoint = T, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value>::type* = nullptr
+            , class FloatingPoint = T, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, int>::type = 0
         > constexpr Vector<size, Integral> operator*(const Vector<size, Integral>& other) const {
             return other**this;
         }
@@ -1720,90 +1751,92 @@ template<std::size_t size, class T> class Vector {
             return divideInternal(other, typename Containers::Implementation::GenerateSequence<size>::Type{});
         }
 
-        template<class FloatingPoint, class Integral = T> typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, Vector<size, T>&>::type
-        operator/=(const Vector<size, FloatingPoint>& other) {
+        template<class FloatingPoint
+            , class Integral = T, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, int>::type = 0
+        > Vector<size, T>& operator/=(const Vector<size, FloatingPoint>& other) {
             for(std::size_t i = 0; i != size; ++i)
                 _data[i] = T(_data[i]/other._data[i]);
 
             return *this;
         }
 
-        template<class FloatingPoint, class Integral = T> constexpr typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, Vector<size, T>>::type
-        operator/(const Vector<size, FloatingPoint>& other) const {
+        template<class FloatingPoint
+            , class Integral = T, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, int>::type = 0
+        > constexpr Vector<size, T> operator/(const Vector<size, FloatingPoint>& other) const {
             return divideIntegerInternal(other, typename Containers::Implementation::GenerateSequence<size>::Type{});
         }
 
-        template<class Integral = T> typename std::enable_if<std::is_integral<Integral>::value, Vector<size, T>&>::type
-        operator%=(T scalar) {
+        template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0>
+        Vector<size, T>& operator%=(T scalar) {
             for(std::size_t i = 0; i != size; ++i)
                 _data[i] %= scalar;
 
             return *this;
         }
 
-        template<class Integral = T> constexpr typename std::enable_if<std::is_integral<Integral>::value, Vector<size, T>>::type
-        operator%(T scalar) const {
+        template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0>
+        constexpr Vector<size, T> operator%(T scalar) const {
             return moduloInternal(scalar, typename Containers::Implementation::GenerateSequence<size>::Type{});
         }
 
-        template<class Integral = T> typename std::enable_if<std::is_integral<Integral>::value, Vector<size, T>&>::type
-        operator%=(const Vector<size, T>& other) {
+        template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0>
+        Vector<size, T>&  operator%=(const Vector<size, T>& other) {
             for(std::size_t i = 0; i != size; ++i)
                 _data[i] %= other._data[i];
 
             return *this;
         }
 
-        template<class Integral = T> constexpr typename std::enable_if<std::is_integral<Integral>::value, Vector<size, T>>::type
-        operator%(const Vector<size, T>& other) const {
+        template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0>
+        constexpr Vector<size, T> operator%(const Vector<size, T>& other) const {
             return moduloInternal(other, typename Containers::Implementation::GenerateSequence<size>::Type{});
         }
 
-        template<class Integral = T> constexpr typename std::enable_if<std::is_integral<Integral>::value, Vector<size, T>>::type
-        operator~() const {
+        template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0>
+        constexpr Vector<size, T> operator~() const {
             return invertInternal(typename Containers::Implementation::GenerateSequence<size>::Type{});
         }
 
-        template<class Integral = T> typename std::enable_if<std::is_integral<Integral>::value, Vector<size, T>&>::type
-        operator&=(const Vector<size, T>& other) {
+        template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0>
+        Vector<size, T>& operator&=(const Vector<size, T>& other) {
             for(std::size_t i = 0; i != size; ++i)
                 _data[i] &= other._data[i];
 
             return *this;
         }
 
-        template<class Integral = T> constexpr typename std::enable_if<std::is_integral<Integral>::value, Vector<size, T>>::type
-        operator&(const Vector<size, T>& other) const {
+        template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0>
+        constexpr Vector<size, T> operator&(const Vector<size, T>& other) const {
             return andInternal(other, typename Containers::Implementation::GenerateSequence<size>::Type{});
         }
 
-        template<class Integral = T> typename std::enable_if<std::is_integral<Integral>::value, Vector<size, T>&>::type
-        operator|=(const Vector<size, T>& other) {
+        template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0>
+        Vector<size, T>& operator|=(const Vector<size, T>& other) {
             for(std::size_t i = 0; i != size; ++i)
                 _data[i] |= other._data[i];
 
             return *this;
         }
 
-        template<class Integral = T> constexpr typename std::enable_if<std::is_integral<Integral>::value, Vector<size, T>>::type
-        operator|(const Vector<size, T>& other) const {
+        template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0>
+        constexpr Vector<size, T> operator|(const Vector<size, T>& other) const {
             return orInternal(other, typename Containers::Implementation::GenerateSequence<size>::Type{});
         }
 
-        template<class Integral = T> typename std::enable_if<std::is_integral<Integral>::value, Vector<size, T>&>::type
-        operator^=(const Vector<size, T>& other) {
+        template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0>
+        Vector<size, T>& operator^=(const Vector<size, T>& other) {
             for(std::size_t i = 0; i != size; ++i)
                 _data[i] ^= other._data[i];
 
             return *this;
         }
 
-        template<class Integral = T> constexpr typename std::enable_if<std::is_integral<Integral>::value, Vector<size, T>>::type
-        operator^(const Vector<size, T>& other) const {
+        template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0>
+        constexpr Vector<size, T> operator^(const Vector<size, T>& other) const {
             return xorInternal(other, typename Containers::Implementation::GenerateSequence<size>::Type{});
         }
 
-        template<class Integral = T> typename std::enable_if<std::is_integral<Integral>::value, Vector<size, T>&>::type operator<<=(typename std::common_type<T>::type shift)
+        template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0> Vector<size, T>& operator<<=(typename std::common_type<T>::type shift)
         {
             for(std::size_t i = 0; i != size; ++i)
                 _data[i] <<= shift;
@@ -1811,13 +1844,12 @@ template<std::size_t size, class T> class Vector {
             return *this;
         }
 
-        template<class Integral = T> constexpr typename std::enable_if<std::is_integral<Integral>::value, Vector<size, T>>::type
-        operator<<(typename std::common_type<T>::type shift) const
+        template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0> constexpr Vector<size, T> operator<<(typename std::common_type<T>::type shift) const
         {
             return shiftLeftInternal(shift, typename Containers::Implementation::GenerateSequence<size>::Type{});
         }
 
-        template<class Integral = T> typename std::enable_if<std::is_integral<Integral>::value, Vector<size, T>&>::type operator>>=(typename std::common_type<T>::type shift)
+        template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0> Vector<size, T>& operator>>=(typename std::common_type<T>::type shift)
         {
             for(std::size_t i = 0; i != size; ++i)
                 _data[i] >>= shift;
@@ -1825,8 +1857,8 @@ template<std::size_t size, class T> class Vector {
             return *this;
         }
 
-        template<class Integral = T>
-        constexpr typename std::enable_if<std::is_integral<Integral>::value, Vector<size, T>>::type operator>>(typename std::common_type<T>::type shift) const
+        template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0>
+        constexpr Vector<size, T> operator>>(typename std::common_type<T>::type shift) const
         {
             return shiftRightInternal(shift, typename Containers::Implementation::GenerateSequence<size>::Type{});
         }
@@ -1835,24 +1867,24 @@ template<std::size_t size, class T> class Vector {
 
         T length() const { return T(std::sqrt(dot())); }
 
-        template<class U = T> typename std::enable_if<std::is_floating_point<U>::value, T>::type
-        lengthInverted() const { return T(1)/length(); }
+        template<class U = T, typename std::enable_if<std::is_floating_point<U>::value, int>::type = 0>
+        T lengthInverted() const { return T(1)/length(); }
 
-        template<class U = T> typename std::enable_if<std::is_floating_point<U>::value, Vector<size, T>>::type
-        normalized() const { return *this*lengthInverted(); }
+        template<class U = T, typename std::enable_if<std::is_floating_point<U>::value, int>::type = 0>
+        Vector<size, T> normalized() const { return *this*lengthInverted(); }
 
-        template<class U = T> typename std::enable_if<std::is_floating_point<U>::value, Vector<size, T>>::type
-        resized(T length) const {
+        template<class U = T, typename std::enable_if<std::is_floating_point<U>::value, int>::type = 0>
+        Vector<size, T> resized(T length) const {
             return *this*(lengthInverted()*length);
         }
 
-        template<class U = T> typename std::enable_if<std::is_floating_point<U>::value, Vector<size, T>>::type
-        projected(const Vector<size, T>& line) const {
+        template<class U = T, typename std::enable_if<std::is_floating_point<U>::value, int>::type = 0>
+        Vector<size, T> projected(const Vector<size, T>& line) const {
             return line*Math::dot(*this, line)/line.dot();
         }
 
-        template<class U = T> typename std::enable_if<std::is_floating_point<U>::value, Vector<size, T>>::type
-        projectedOntoNormalized(const Vector<size, T>& line) const;
+        template<class U = T, typename std::enable_if<std::is_floating_point<U>::value, int>::type = 0>
+        Vector<size, T> projectedOntoNormalized(const Vector<size, T>& line) const;
 
         constexpr Vector<size, T> flipped() const {
             return flippedInternal(typename Containers::Implementation::GenerateSequence<size>::Type{});
@@ -1997,8 +2029,7 @@ template<std::size_t size, class T> inline BitVector<size> notEqual(const Vector
     constexpr Type_<T> operator+() const {                                  \
         return Math::Vector<size, T>::operator+();                          \
     }                                                                       \
-    template<class U = T> constexpr typename std::enable_if<std::is_signed<U>::value, Type_<T>>::type \
-    operator-() const {                                                     \
+    template<class U = T, typename std::enable_if<std::is_signed<U>::value, int>::type = 0> constexpr Type_<T> operator-() const { \
         return Math::Vector<size, T>::negateInternal(typename Containers::Implementation::GenerateSequence<size>::Type{}); \
     }                                                                       \
     Type_<T>& operator+=(const Math::Vector<size, T>& other) {              \
@@ -2026,14 +2057,14 @@ template<std::size_t size, class T> inline BitVector<size> notEqual(const Vector
     friend constexpr Type_<T> operator*(typename std::common_type<T>::type scalar, const Type_<T>& vector) { \
         return scalar*static_cast<const Math::Vector<size, T>&>(vector);    \
     }                                                                       \
-    template<class FloatingPoint, class Integral = T> typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, Type_<T>&>::type operator*=(FloatingPoint scalar) { \
+    template<class FloatingPoint, class Integral = T, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, int>::type = 0> Type_<T>& operator*=(FloatingPoint scalar) { \
         Math::Vector<size, T>::operator*=(scalar);                          \
         return *this;                                                       \
     }                                                                       \
-    template<class FloatingPoint, class Integral = T> constexpr typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, Type_<T>>::type operator*(FloatingPoint scalar) const { \
+    template<class FloatingPoint, class Integral = T, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, int>::type = 0> constexpr Type_<T> operator*(FloatingPoint scalar) const { \
         return Math::Vector<size, T>::multiplyIntegerInternal(scalar, typename Containers::Implementation::GenerateSequence<size>::Type{}); \
     }                                                                       \
-    template<class FloatingPoint, class Integral = T> friend constexpr typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, Type_<T>>::type operator*(FloatingPoint scalar, const Type_<T>& vector) { \
+    template<class FloatingPoint, class Integral = T, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, int>::type = 0> friend constexpr Type_<T> operator*(FloatingPoint scalar, const Type_<T>& vector) { \
         return scalar*static_cast<const Math::Vector<size, T>&>(vector);    \
     }                                                                       \
                                                                             \
@@ -2047,11 +2078,11 @@ template<std::size_t size, class T> inline BitVector<size> notEqual(const Vector
     friend constexpr Type_<T> operator/(typename std::common_type<T>::type scalar, const Type_<T>& vector) { \
         return scalar/static_cast<const Math::Vector<size, T>&>(vector);    \
     }                                                                       \
-    template<class FloatingPoint, class Integral = T> typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, Type_<T>&>::type operator/=(FloatingPoint scalar) { \
+    template<class FloatingPoint, class Integral = T, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, int>::type = 0> Type_<T>& operator/=(FloatingPoint scalar) { \
         Math::Vector<size, T>::operator/=(scalar);                          \
         return *this;                                                       \
     }                                                                       \
-    template<class FloatingPoint, class Integral = T> constexpr typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, Type_<T>>::type operator/(FloatingPoint scalar) const { \
+    template<class FloatingPoint, class Integral = T, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, int>::type = 0> constexpr Type_<T> operator/(FloatingPoint scalar) const { \
         return Math::Vector<size, T>::divideIntegerInternal(scalar, typename Containers::Implementation::GenerateSequence<size>::Type{}); \
     }                                                                       \
                                                                             \
@@ -2062,14 +2093,14 @@ template<std::size_t size, class T> inline BitVector<size> notEqual(const Vector
     constexpr Type_<T> operator*(const Math::Vector<size, T>& other) const { \
         return Math::Vector<size, T>::multiplyInternal(other, typename Containers::Implementation::GenerateSequence<size>::Type{}); \
     }                                                                       \
-    template<class FloatingPoint, class Integral = T> typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, Type_<T>&>::type operator*=(const Math::Vector<size, FloatingPoint>& other) { \
+    template<class FloatingPoint, class Integral = T, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, int>::type = 0> Type_<T>& operator*=(const Math::Vector<size, FloatingPoint>& other) { \
         Math::Vector<size, T>::operator*=(other);                           \
         return *this;                                                       \
     }                                                                       \
-    template<class FloatingPoint, class Integral = T, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value>::type* = nullptr> constexpr Type_<T> operator*(const Math::Vector<size, FloatingPoint>& other) const { \
+    template<class FloatingPoint, class Integral = T, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, int>::type = 0> constexpr Type_<T> operator*(const Math::Vector<size, FloatingPoint>& other) const { \
         return Math::Vector<size, T>::multiplyIntegerInternal(other, typename Containers::Implementation::GenerateSequence<size>::Type{}); \
     }                                                                       \
-    template<class Integral, class FloatingPoint = T, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value>::type* = nullptr> constexpr Type_<Integral> operator*(const Math::Vector<size, Integral>& other) const { \
+    template<class Integral, class FloatingPoint = T, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, int>::type = 0> constexpr Type_<Integral> operator*(const Math::Vector<size, Integral>& other) const { \
         return other**this;                                                 \
     }                                                                       \
                                                                             \
@@ -2080,78 +2111,78 @@ template<std::size_t size, class T> inline BitVector<size> notEqual(const Vector
     constexpr Type_<T> operator/(const Math::Vector<size, T>& other) const { \
         return Math::Vector<size, T>::divideInternal(other, typename Containers::Implementation::GenerateSequence<size>::Type{}); \
     }                                                                       \
-    template<class FloatingPoint, class Integral = T> typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, Type_<T>&>::type operator/=(const Math::Vector<size, FloatingPoint>& other) { \
+    template<class FloatingPoint, class Integral = T, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, int>::type = 0> Type_<T>& operator/=(const Math::Vector<size, FloatingPoint>& other) { \
         Math::Vector<size, T>::operator/=(other);                           \
         return *this;                                                       \
     }                                                                       \
-    template<class FloatingPoint, class Integral = T> constexpr typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, Type_<T>>::type operator/(const Math::Vector<size, FloatingPoint>& other) const { \
+    template<class FloatingPoint, class Integral = T, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, int>::type = 0> constexpr Type_<T> operator/(const Math::Vector<size, FloatingPoint>& other) const { \
         return Math::Vector<size, T>::divideIntegerInternal(other, typename Containers::Implementation::GenerateSequence<size>::Type{}); \
     }                                                                       \
                                                                             \
-    template<class Integral = T> typename std::enable_if<std::is_integral<Integral>::value, Type_<T>&>::type operator%=(T scalar) { \
+    template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0> Type_<T>& operator%=(T scalar) { \
         Math::Vector<size, T>::operator%=(scalar);                          \
         return *this;                                                       \
     }                                                                       \
-    template<class Integral = T> constexpr typename std::enable_if<std::is_integral<Integral>::value, Type_<T>>::type operator%(T scalar) const { \
+    template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0> constexpr Type_<T> operator%(T scalar) const { \
         return Math::Vector<size, T>::moduloInternal(scalar, typename Containers::Implementation::GenerateSequence<size>::Type{}); \
     }                                                                       \
-    template<class Integral = T> typename std::enable_if<std::is_integral<Integral>::value, Type_<T>&>::type operator%=(const Math::Vector<size, T>& other) { \
+    template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0> Type_<T>& operator%=(const Math::Vector<size, T>& other) { \
         Math::Vector<size, T>::operator%=(other);                           \
         return *this;                                                       \
     }                                                                       \
-    template<class Integral = T> constexpr typename std::enable_if<std::is_integral<Integral>::value, Type_<T>>::type operator%(const Math::Vector<size, T>& other) const { \
+    template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0> constexpr Type_<T> operator%(const Math::Vector<size, T>& other) const { \
         return Math::Vector<size, T>::moduloInternal(other, typename Containers::Implementation::GenerateSequence<size>::Type{}); \
     }                                                                       \
                                                                             \
-    template<class Integral = T> constexpr typename std::enable_if<std::is_integral<Integral>::value, Type_<T>>::type operator~() const { \
+    template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0> constexpr Type_<T> operator~() const { \
         return Math::Vector<size, T>::invertInternal(typename Containers::Implementation::GenerateSequence<size>::Type{}); \
     }                                                                       \
-    template<class Integral = T> typename std::enable_if<std::is_integral<Integral>::value, Type_<T>&>::type operator&=(const Math::Vector<size, T>& other) { \
+    template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0> Type_<T>& operator&=(const Math::Vector<size, T>& other) { \
         Math::Vector<size, T>::operator&=(other);                           \
         return *this;                                                       \
     }                                                                       \
-    template<class Integral = T> constexpr typename std::enable_if<std::is_integral<Integral>::value, Type_<T>>::type operator&(const Math::Vector<size, T>& other) const { \
+    template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0> constexpr Type_<T> operator&(const Math::Vector<size, T>& other) const { \
         return Math::Vector<size, T>::andInternal(other, typename Containers::Implementation::GenerateSequence<size>::Type{}); \
     }                                                                       \
-    template<class Integral = T> typename std::enable_if<std::is_integral<Integral>::value, Type_<T>&>::type operator|=(const Math::Vector<size, T>& other) { \
+    template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0> Type_<T>& operator|=(const Math::Vector<size, T>& other) { \
         Math::Vector<size, T>::operator|=(other);                           \
         return *this;                                                       \
     }                                                                       \
-    template<class Integral = T> constexpr typename std::enable_if<std::is_integral<Integral>::value, Type_<T>>::type operator|(const Math::Vector<size, T>& other) const { \
+    template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0> constexpr Type_<T> operator|(const Math::Vector<size, T>& other) const { \
         return Math::Vector<size, T>::orInternal(other, typename Containers::Implementation::GenerateSequence<size>::Type{}); \
     }                                                                       \
-    template<class Integral = T> typename std::enable_if<std::is_integral<Integral>::value, Type_<T>&>::type operator^=(const Math::Vector<size, T>& other) { \
+    template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0> Type_<T>& operator^=(const Math::Vector<size, T>& other) { \
         Math::Vector<size, T>::operator^=(other);                           \
         return *this;                                                       \
     }                                                                       \
-    template<class Integral = T> constexpr typename std::enable_if<std::is_integral<Integral>::value, Type_<T>>::type operator^(const Math::Vector<size, T>& other) const { \
+    template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0> constexpr Type_<T> operator^(const Math::Vector<size, T>& other) const { \
         return Math::Vector<size, T>::xorInternal(other, typename Containers::Implementation::GenerateSequence<size>::Type{}); \
     }                                                                       \
-    template<class Integral = T> typename std::enable_if<std::is_integral<Integral>::value, Type_<T>&>::type operator<<=(typename std::common_type<T>::type shift) { \
+    template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0> Type_<T>& operator<<=(typename std::common_type<T>::type shift) { \
         Math::Vector<size, T>::operator<<=(shift);                          \
         return *this;                                                       \
     }                                                                       \
-    template<class Integral = T> constexpr typename std::enable_if<std::is_integral<Integral>::value, Type_<T>>::type operator<<(typename std::common_type<T>::type shift) const { \
+    template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0> constexpr Type_<T> operator<<(typename std::common_type<T>::type shift) const { \
         return Math::Vector<size, T>::shiftLeftInternal(shift, typename Containers::Implementation::GenerateSequence<size>::Type{}); \
     }                                                                       \
-    template<class Integral = T> typename std::enable_if<std::is_integral<Integral>::value, Type_<T>&>::type operator>>=(typename std::common_type<T>::type shift) { \
+    template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0> Type_<T>& operator>>=(typename std::common_type<T>::type shift) { \
         Math::Vector<size, T>::operator>>=(shift);                          \
         return *this;                                                       \
     }                                                                       \
-    template<class Integral = T> constexpr typename std::enable_if<std::is_integral<Integral>::value, Type_<T>>::type operator>>(typename std::common_type<T>::type shift) const { \
+    template<class Integral = T, typename std::enable_if<std::is_integral<Integral>::value, int>::type = 0> constexpr Type_<T> operator>>(typename std::common_type<T>::type shift) const { \
         return Math::Vector<size, T>::shiftRightInternal(shift, typename Containers::Implementation::GenerateSequence<size>::Type{}); \
     }                                                                       \
                                                                             \
-    template<class U = T> typename std::enable_if<std::is_floating_point<U>::value, Type_<T>>::type normalized() const { \
+    template<class U = T, typename std::enable_if<std::is_floating_point<U>::value, int>::type = 0> Type_<T> normalized() const { \
         return Math::Vector<size, T>::normalized();                         \
     }                                                                       \
-    template<class U = T> typename std::enable_if<std::is_floating_point<U>::value, Type_<T>>::type resized(T length) const { \
+    template<class U = T, typename std::enable_if<std::is_floating_point<U>::value, int>::type = 0> Type_<T> resized(T length) const { \
         return Math::Vector<size, T>::resized(length);                      \
     }                                                                       \
-    template<class U = T> typename std::enable_if<std::is_floating_point<U>::value, Type_<T>>::type projected(const Math::Vector<size, T>& other) const { \
+    template<class U = T, typename std::enable_if<std::is_floating_point<U>::value, int>::type = 0> Type_<T> projected(const Math::Vector<size, T>& other) const { \
         return Math::Vector<size, T>::projected(other);                     \
     }                                                                       \
-    template<class U = T> typename std::enable_if<std::is_floating_point<U>::value, Type_<T>>::type projectedOntoNormalized(const Math::Vector<size, T>& other) const { \
+    template<class U = T, typename std::enable_if<std::is_floating_point<U>::value, int>::type = 0> Type_<T> projectedOntoNormalized(const Math::Vector<size, T>& other) const { \
         return Math::Vector<size, T>::projectedOntoNormalized(other);       \
     }                                                                       \
     constexpr Type_<T> flipped() const {                                    \
@@ -2159,12 +2190,12 @@ template<std::size_t size, class T> inline BitVector<size> notEqual(const Vector
     }
 
 #ifdef CORRADE_MSVC2015_COMPATIBILITY
-template<std::size_t size, class FloatingPoint, class Integral> constexpr typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, Vector<size, Integral>>::type operator*(FloatingPoint scalar, const Vector<size, Integral>& vector) {
+template<std::size_t size, class FloatingPoint, class Integral, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, int>::type = 0> constexpr Vector<size, Integral> operator*(FloatingPoint scalar, const Vector<size, Integral>& vector) {
     return vector*scalar;
 }
 
 #define MAGNUM_VECTORn_OPERATOR_IMPLEMENTATION(size, Type)                   \
-    template<class FloatingPoint, class Integral> constexpr typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, Type<Integral>>::type operator*(FloatingPoint scalar, const Type<Integral>& vector) { \
+    template<class FloatingPoint, class Integral, typename std::enable_if<std::is_integral<Integral>::value && std::is_floating_point<FloatingPoint>::value, int>::type = 0> constexpr Type<Integral> operator*(FloatingPoint scalar, const Type<Integral>& vector) { \
         return vector*scalar;                                               \
     }
 #endif
@@ -2206,8 +2237,8 @@ template<std::size_t size, class T> inline BitVector<size> Vector<size, T>::oper
 }
 
 template<std::size_t size, class T>
-template<class U> inline typename std::enable_if<std::is_floating_point<U>::value, Vector<size, T>>::type
-Vector<size, T>::projectedOntoNormalized(const Vector<size, T>& line) const {
+template<class U, typename std::enable_if<std::is_floating_point<U>::value, int>::type>
+inline Vector<size, T> Vector<size, T>::projectedOntoNormalized(const Vector<size, T>& line) const {
     CORRADE_DEBUG_ASSERT(line.isNormalized(),
         "Math::Vector::projectedOntoNormalized(): line" << line << "is not normalized", {});
     return line*Math::dot(*this, line);
@@ -2313,8 +2344,8 @@ template<UnsignedInt order, UnsignedInt dimensions, class T> class Bezier {
             Dimensions = dimensions
         };
 
-        template<UnsignedInt order_ = order> static typename std::enable_if<order_ == 3, Bezier<order, dimensions, T>>::type
-        fromCubicHermite(const CubicHermite<VectorType>& a, const CubicHermite<VectorType>& b) {
+        template<UnsignedInt order_ = order, typename std::enable_if<order_ == 3, int>::type = 0>
+        static Bezier<order, dimensions, T> fromCubicHermite(const CubicHermite<VectorType>& a, const CubicHermite<VectorType>& b) {
             return {a.point(), a.outTangent()/T(3) - a.point(), b.point() - b.inTangent()/T(3), b.point()};
         }
 
@@ -3180,7 +3211,9 @@ template<class T> inline Rad<T> acos(T value) { return Rad<T>(std::acos(value));
 
 template<class T> inline Rad<T> atan(T value) { return Rad<T>(std::atan(value)); }
 
-template<class T> inline typename std::enable_if<IsScalar<T>::value, bool>::type isInf(T value) {
+template<class T
+    , typename std::enable_if<IsScalar<T>::value, int>::type = 0
+> inline bool isInf(T value) {
     return std::isinf(UnderlyingTypeOf<T>(value));
 }
 
@@ -3191,7 +3224,9 @@ template<std::size_t size, class T> inline BitVector<size> isInf(const Vector<si
     return out;
 }
 
-template<class T> typename std::enable_if<IsScalar<T>::value, bool>::type isNan(T value);
+template<class T
+    , typename std::enable_if<IsScalar<T>::value, int>::type
+> bool isNan(T value);
 
 template<std::size_t size, class T> inline BitVector<size> isNan(const Vector<size, T>& value) {
     BitVector<size> out;
@@ -3200,7 +3235,9 @@ template<std::size_t size, class T> inline BitVector<size> isNan(const Vector<si
     return out;
 }
 
-template<class T> constexpr typename std::enable_if<IsScalar<T>::value, T>::type min(T value, T min);
+template<class T
+    , typename std::enable_if<IsScalar<T>::value, int>::type
+> constexpr T min(T value, T min);
 
 template<std::size_t size, class T> inline Vector<size, T> min(const Vector<size, T>& value, const Vector<size, T>& min) {
     Vector<size, T> out{Magnum::NoInit};
@@ -3216,7 +3253,9 @@ template<std::size_t size, class T> inline Vector<size, T> min(const Vector<size
     return out;
 }
 
-template<class T> constexpr typename std::enable_if<IsScalar<T>::value, T>::type max(T a, T b);
+template<class T
+    , typename std::enable_if<IsScalar<T>::value, int>::type
+> constexpr T max(T a, T b);
 
 template<std::size_t size, class T> Vector<size, T> max(const Vector<size, T>& value, const Vector<size, T>& max) {
     Vector<size, T> out{Magnum::NoInit};
@@ -3232,7 +3271,9 @@ template<std::size_t size, class T> inline Vector<size, T> max(const Vector<size
     return out;
 }
 
-template<class T> inline typename std::enable_if<IsScalar<T>::value, Containers::Pair<T, T>>::type minmax(T a, T b) {
+template<class T
+    , typename std::enable_if<IsScalar<T>::value, int>::type = 0
+> inline Containers::Pair<T, T> minmax(T a, T b) {
     return a < b ? Containers::pair(a, b) : Containers::pair(b, a);
 }
 
@@ -3244,7 +3285,9 @@ template<std::size_t size, class T> inline Containers::Pair<Vector<size, T>, Vec
     return out;
 }
 
-template<class T> constexpr typename std::enable_if<IsScalar<T>::value, T>::type clamp(T value, T min, T max);
+template<class T
+    , typename std::enable_if<IsScalar<T>::value, int>::type
+> constexpr T clamp(T value, T min, T max);
 
 template<std::size_t size, class T> inline Vector<size, T> clamp(const Vector<size, T>& value, const Vector<size, T>& min, const Vector<size, T>& max) {
     Vector<size, T> out{Magnum::NoInit};
@@ -3260,7 +3303,9 @@ template<std::size_t size, class T> inline Vector<size, T> clamp(const Vector<si
     return out;
 }
 
-template<class T> inline typename std::enable_if<IsScalar<T>::value, UnderlyingTypeOf<T>>::type sign(T scalar) {
+template<class T
+    , typename std::enable_if<IsScalar<T>::value, int>::type = 0
+> inline UnderlyingTypeOf<T> sign(T scalar) {
     if(scalar > T(0)) return UnderlyingTypeOf<T>(1);
     if(scalar < T(0)) return UnderlyingTypeOf<T>(-1);
     return UnderlyingTypeOf<T>(0);
@@ -3273,7 +3318,9 @@ template<std::size_t size, class T> inline Vector<size, UnderlyingTypeOf<T>> sig
     return out;
 }
 
-template<class T> inline typename std::enable_if<IsScalar<T>::value, T>::type abs(T a) {
+template<class T
+    , typename std::enable_if<IsScalar<T>::value, int>::type = 0
+> inline T abs(T a) {
     return T(std::abs(UnderlyingTypeOf<T>(a)));
 }
 
@@ -3284,7 +3331,9 @@ template<std::size_t size, class T> inline Vector<size, T> abs(const Vector<size
     return out;
 }
 
-template<class T> inline typename std::enable_if<IsScalar<T>::value, T>::type floor(T a) {
+template<class T
+    , typename std::enable_if<IsScalar<T>::value, int>::type = 0
+> inline T floor(T a) {
     return T(std::floor(UnderlyingTypeOf<T>(a)));
 }
 
@@ -3295,7 +3344,9 @@ template<std::size_t size, class T> inline Vector<size, T> floor(const Vector<si
     return out;
 }
 
-template<class T> inline typename std::enable_if<IsScalar<T>::value, T>::type round(T a) {
+template<class T
+    , typename std::enable_if<IsScalar<T>::value, int>::type = 0
+> inline T round(T a) {
     return T(std::round(UnderlyingTypeOf<T>(a)));
 }
 
@@ -3306,7 +3357,9 @@ template<std::size_t size, class T> inline Vector<size, T> round(const Vector<si
     return out;
 }
 
-template<class T> inline typename std::enable_if<IsScalar<T>::value, T>::type ceil(T a) {
+template<class T
+    , typename std::enable_if<IsScalar<T>::value, int>::type = 0
+> inline T ceil(T a) {
     return T(std::ceil(UnderlyingTypeOf<T>(a)));
 }
 
@@ -3317,7 +3370,9 @@ template<std::size_t size, class T> inline Vector<size, T> ceil(const Vector<siz
     return out;
 }
 
-template<class T> inline typename std::enable_if<IsScalar<T>::value, T>::type fmod(T a, T b) {
+template<class T
+    , typename std::enable_if<IsScalar<T>::value, int>::type = 0
+> inline T fmod(T a, T b) {
     return T(std::fmod(UnderlyingTypeOf<T>(a), UnderlyingTypeOf<T>(b)));
 }
 
@@ -3335,9 +3390,9 @@ template<std::size_t size, class T> inline Vector<size, T> fmod(const Vector<siz
     return out;
 }
 
-template<class T, class U> inline
-    typename std::enable_if<(IsVector<T>::value || IsScalar<T>::value) && !Implementation::IsBitVectorOrScalar<U>::value, T>::type
-lerp(const T& a, const T& b, U t) {
+template<class T, class U
+    , typename std::enable_if<(IsVector<T>::value || IsScalar<T>::value) && !Implementation::IsBitVectorOrScalar<U>::value, int>::type = 0
+> inline T lerp(const T& a, const T& b, U t) {
     return Implementation::lerp(a, b, t);
 }
 
@@ -3359,7 +3414,9 @@ template<std::size_t size> inline BitVector<size> lerp(const BitVector<size>& a,
     return out;
 }
 
-template<class T> inline UnderlyingTypeOf<typename std::enable_if<IsScalar<T>::value, T>::type> lerpInverted(T a, T b, T lerp) {
+template<class T
+    , typename std::enable_if<IsScalar<T>::value, int>::type = 0
+> inline UnderlyingTypeOf<T> lerpInverted(T a, T b, T lerp) {
     return (lerp - a)/(b - a);
 }
 
@@ -3372,7 +3429,9 @@ template<class T, class U> constexpr T select(const T& a, const T& b, U t) {
     return lerp(a, b, t >= U(1));
 }
 
-template<class T> inline typename std::enable_if<IsScalar<T>::value, T>::type fma(T a, T b, T c) {
+template<class T
+    , typename std::enable_if<IsScalar<T>::value, int>::type = 0
+> inline T fma(T a, T b, T c) {
     static_assert(IsUnitless<T>::value, "expecting a unitless type");
     #ifndef CORRADE_TARGET_EMSCRIPTEN
     return std::fma(a, b, c);
@@ -3394,7 +3453,9 @@ template<class T> inline T log(T number) { return std::log(number); }
 
 template<class T> inline T exp(T exponent) { return std::exp(exponent); }
 
-template<UnsignedInt exponent, class T> constexpr typename std::enable_if<IsScalar<T>::value, T>::type pow(T base) {
+template<UnsignedInt exponent, class T
+    , typename std::enable_if<IsScalar<T>::value, int>::type = 0
+> constexpr T pow(T base) {
     static_assert(IsUnitless<T>::value, "expected a unitless type");
     return Implementation::Pow<exponent>::pow(base);
 }
@@ -3406,7 +3467,9 @@ template<UnsignedInt exponent, std::size_t size, class T> inline Vector<size, T>
     return out;
 }
 
-template<class T> inline typename std::enable_if<IsScalar<T>::value, T>::type pow(T base, T exponent) {
+template<class T
+    , typename std::enable_if<IsScalar<T>::value, int>::type = 0
+> inline T pow(T base, T exponent) {
     static_assert(IsUnitless<T>::value, "expected a unitless type");
     return std::pow(base, exponent);
 }
@@ -3418,7 +3481,9 @@ template<std::size_t size, class T> inline Vector<size, T> pow(const Vector<size
     return out;
 }
 
-template<class T> inline typename std::enable_if<IsScalar<T>::value, T>::type sqrt(T a) {
+template<class T
+    , typename std::enable_if<IsScalar<T>::value, int>::type = 0
+> inline T sqrt(T a) {
     static_assert(IsUnitless<T>::value, "expecting a unitless type");
     return std::sqrt(a);
 }
@@ -3430,7 +3495,9 @@ template<std::size_t size, class T> inline Vector<size, T> sqrt(const Vector<siz
     return out;
 }
 
-template<class T> inline typename std::enable_if<IsScalar<T>::value, T>::type sqrtInverted(T a) {
+template<class T
+    , typename std::enable_if<IsScalar<T>::value, int>::type = 0
+> inline T sqrtInverted(T a) {
     static_assert(IsUnitless<T>::value, "expecting a unitless type");
     return T(1)/std::sqrt(a);
 }
@@ -3470,14 +3537,14 @@ template<class T, UnsignedInt bits = sizeof(T)*8> constexpr T bitMax() {
 
 }
 
-template<class FloatingPoint, class Integral, UnsignedInt bits = sizeof(Integral)*8> inline typename std::enable_if<IsScalar<Integral>::value && std::is_unsigned<Integral>::value, FloatingPoint>::type unpack(const Integral& value) {
+template<class FloatingPoint, class Integral, UnsignedInt bits = sizeof(Integral)*8, typename std::enable_if<IsScalar<Integral>::value && std::is_unsigned<Integral>::value, int>::type = 0> inline FloatingPoint unpack(const Integral& value) {
     static_assert(IsFloatingPoint<FloatingPoint>::value && IsIntegral<Integral>::value,
         "unpacking must be done from integral to floating-point type");
     static_assert(bits <= sizeof(Integral)*8,
         "bit count larger than size of the integral type");
     return FloatingPoint(value/UnderlyingTypeOf<FloatingPoint>(Implementation::bitMax<Integral, bits>()));
 }
-template<class FloatingPoint, class Integral, UnsignedInt bits = sizeof(Integral)*8> inline typename std::enable_if<IsScalar<Integral>::value && std::is_signed<Integral>::value, FloatingPoint>::type unpack(const Integral& value) {
+template<class FloatingPoint, class Integral, UnsignedInt bits = sizeof(Integral)*8, typename std::enable_if<IsScalar<Integral>::value && std::is_signed<Integral>::value, int>::type = 0> inline FloatingPoint unpack(const Integral& value) {
     static_assert(IsFloatingPoint<FloatingPoint>::value && IsIntegral<Integral>::value,
         "unpacking must be done from integral to floating-point type");
     static_assert(bits <= sizeof(Integral)*8,
@@ -3493,14 +3560,14 @@ template<class FloatingPoint, std::size_t size, class Integral, UnsignedInt bits
     return out;
 }
 
-template<class FloatingPoint, UnsignedInt bits, class Integral> inline typename std::enable_if<IsScalar<Integral>::value, FloatingPoint>::type unpack(const Integral& value) {
+template<class FloatingPoint, UnsignedInt bits, class Integral, typename std::enable_if<IsScalar<Integral>::value, int>::type = 0> inline FloatingPoint unpack(const Integral& value) {
     return unpack<FloatingPoint, Integral, bits>(value);
 }
 template<class FloatingPoint, UnsignedInt bits, std::size_t size, class Integral> inline FloatingPoint unpack(const Vector<size, Integral>& value) {
     return unpack<FloatingPoint, size, Integral, bits>(value);
 }
 
-template<class Integral, class FloatingPoint, UnsignedInt bits = sizeof(Integral)*8> inline typename std::enable_if<IsScalar<FloatingPoint>::value, Integral>::type pack(FloatingPoint value) {
+template<class Integral, class FloatingPoint, UnsignedInt bits = sizeof(Integral)*8, typename std::enable_if<IsScalar<FloatingPoint>::value, int>::type = 0> inline Integral pack(FloatingPoint value) {
     static_assert(IsFloatingPoint<FloatingPoint>::value && IsIntegral<Integral>::value,
         "packing must be done from floating-point to integral type");
     static_assert(bits <= sizeof(Integral)*8,
@@ -3516,7 +3583,7 @@ template<class Integral, std::size_t size, class FloatingPoint, UnsignedInt bits
     return out;
 }
 
-template<class Integral, UnsignedInt bits, class FloatingPoint> inline typename std::enable_if<IsScalar<FloatingPoint>::value, Integral>::type pack(FloatingPoint value) {
+template<class Integral, UnsignedInt bits, class FloatingPoint, typename std::enable_if<IsScalar<FloatingPoint>::value, int>::type = 0> inline Integral pack(FloatingPoint value) {
     return pack<Integral, FloatingPoint, bits>(value);
 }
 template<class Integral, UnsignedInt bits, std::size_t size, class FloatingPoint> inline Integral pack(const Vector<size, FloatingPoint>& value) {
@@ -3606,11 +3673,11 @@ template<class T> class Vector2: public Vector<2, T> {
         T& g() { return Vector<2, T>::_data[1]; }
         constexpr const T& g() const { return Vector<2, T>::_data[1]; }
 
-        template<class U = T> typename std::enable_if<std::is_signed<U>::value, Vector2<T>>::type
-        perpendicular() const { return {-y(), x()}; }
+        template<class U = T, typename std::enable_if<std::is_signed<U>::value, int>::type = 0>
+        Vector2<T> perpendicular() const { return {-y(), x()}; }
 
-        template<class U = T> typename std::enable_if<std::is_floating_point<U>::value, T>::type
-        aspectRatio() const { return x()/y(); }
+        template<class U = T, typename std::enable_if<std::is_floating_point<U>::value, int>::type = 0>
+        T aspectRatio() const { return x()/y(); }
 
         MAGNUM_VECTOR_SUBCLASS_IMPLEMENTATION(2, Vector2)
 
@@ -3907,7 +3974,7 @@ namespace Magnum { namespace Math {
 
 namespace Implementation {
 
-template<class T> typename std::enable_if<IsFloatingPoint<T>::value, Color3<T>>::type fromHsv(ColorHsv<T> hsv) {
+template<class T, typename std::enable_if<IsFloatingPoint<T>::value, int>::type = 0> Color3<T> fromHsv(ColorHsv<T> hsv) {
     hsv.hue -= floor(T(hsv.hue)/T(360))*Deg<T>(360);
     if(hsv.hue < Deg<T>(0)) hsv.hue += Deg<T>(360);
 
@@ -3928,7 +3995,7 @@ template<class T> typename std::enable_if<IsFloatingPoint<T>::value, Color3<T>>:
         default: CORRADE_INTERNAL_DEBUG_ASSERT_UNREACHABLE();
     }
 }
-template<class T> inline typename std::enable_if<IsIntegral<T>::value, Color3<T>>::type fromHsv(const ColorHsv<typename TypeTraits<T>::FloatingPointType>& hsv) {
+template<class T, typename std::enable_if<IsIntegral<T>::value, int>::type = 0> inline Color3<T> fromHsv(const ColorHsv<typename TypeTraits<T>::FloatingPointType>& hsv) {
     return pack<Color3<T>>(fromHsv<typename TypeTraits<T>::FloatingPointType>(hsv));
 }
 
@@ -3948,51 +4015,51 @@ template<class T> Deg<T> hue(const Color3<T>& color, T max, T delta) {
     return Deg<T>(hue);
 }
 
-template<class T> inline Deg<T> hue(typename std::enable_if<IsFloatingPoint<T>::value, const Color3<T>&>::type color) {
+template<class T, typename std::enable_if<IsFloatingPoint<T>::value, int>::type = 0> inline Deg<T> hue(const Color3<T>& color) {
     T max = color.max();
     T delta = max - color.min();
     return hue(color, max, delta);
 }
-template<class T> inline T saturation(typename std::enable_if<IsFloatingPoint<T>::value, const Color3<T>&>::type color) {
+template<class T, typename std::enable_if<IsFloatingPoint<T>::value, int>::type = 0> inline T saturation(const Color3<T>& color) {
     T max = color.max();
     T delta = max - color.min();
     return max != T(0) ? delta/max : T(0);
 }
-template<class T> inline T value(typename std::enable_if<IsFloatingPoint<T>::value, const Color3<T>&>::type color) {
+template<class T, typename std::enable_if<IsFloatingPoint<T>::value, int>::type = 0> inline T value(const Color3<T>& color) {
     return color.max();
 }
 
-template<class T> inline Deg<typename Color3<T>::FloatingPointType> hue(typename std::enable_if<IsIntegral<T>::value, const Color3<T>&>::type color) {
+template<class T, typename std::enable_if<IsIntegral<T>::value, int>::type = 0> inline Deg<typename Color3<T>::FloatingPointType> hue(const Color3<T>& color) {
     return hue<typename Color3<T>::FloatingPointType>(unpack<Color3<typename Color3<T>::FloatingPointType>>(color));
 }
-template<class T> inline typename Color3<T>::FloatingPointType saturation(typename std::enable_if<IsIntegral<T>::value, const Color3<T>&>::type& color) {
+template<class T, typename std::enable_if<IsIntegral<T>::value, int>::type = 0> inline typename Color3<T>::FloatingPointType saturation(const Color3<T>& color) {
     return saturation<typename Color3<T>::FloatingPointType>(unpack<Color3<typename Color3<T>::FloatingPointType>>(color));
 }
-template<class T> inline typename Color3<T>::FloatingPointType value(typename std::enable_if<IsIntegral<T>::value, const Color3<T>&>::type color) {
+template<class T, typename std::enable_if<IsIntegral<T>::value, int>::type = 0> inline typename Color3<T>::FloatingPointType value(const Color3<T>& color) {
     return unpack<typename Color3<T>::FloatingPointType>(color.max());
 }
 
-template<class T> inline ColorHsv<T> toHsv(typename std::enable_if<IsFloatingPoint<T>::value, const Color3<T>&>::type color) {
+template<class T, typename std::enable_if<IsFloatingPoint<T>::value, int>::type = 0> inline ColorHsv<T> toHsv(const Color3<T>& color) {
     T max = color.max();
     T delta = max - color.min();
 
     return ColorHsv<T>{hue<typename Color3<T>::FloatingPointType>(color, max, delta), max != T(0) ? delta/max : T(0), max};
 }
-template<class T> inline ColorHsv<typename TypeTraits<T>::FloatingPointType> toHsv(typename std::enable_if<IsIntegral<T>::value, const Color3<T>&>::type color) {
+template<class T, typename std::enable_if<IsIntegral<T>::value, int>::type = 0> inline ColorHsv<typename TypeTraits<T>::FloatingPointType> toHsv(const Color3<T>& color) {
     return toHsv<typename TypeTraits<T>::FloatingPointType>(unpack<Color3<typename TypeTraits<T>::FloatingPointType>>(color));
 }
 
-template<class T> typename std::enable_if<IsFloatingPoint<T>::value, Color3<T>>::type fromSrgb(const Vector3<T>& srgb) {
+template<class T, typename std::enable_if<IsFloatingPoint<T>::value, int>::type = 0> inline Color3<T> fromSrgb(const Vector3<T>& srgb) {
     constexpr const T a(T(0.055));
     return lerp(srgb/T(12.92), pow((srgb + Vector3<T>{a})/(T(1.0) + a), T(2.4)), srgb > Vector3<T>(T(0.04045)));
 }
-template<class T> typename std::enable_if<IsFloatingPoint<T>::value, Color4<T>>::type fromSrgbAlpha(const Vector4<T>& srgbAlpha) {
+template<class T, typename std::enable_if<IsFloatingPoint<T>::value, int>::type = 0> inline Color4<T> fromSrgbAlpha(const Vector4<T>& srgbAlpha) {
     return {fromSrgb<T>(srgbAlpha.rgb()), srgbAlpha.a()};
 }
-template<class T> inline typename std::enable_if<IsIntegral<T>::value, Color3<T>>::type fromSrgb(const Vector3<typename Color3<T>::FloatingPointType>& srgb) {
+template<class T, typename std::enable_if<IsIntegral<T>::value, int>::type = 0> inline Color3<T> fromSrgb(const Vector3<typename Color3<T>::FloatingPointType>& srgb) {
     return pack<Color3<T>>(fromSrgb<typename Color3<T>::FloatingPointType>(srgb));
 }
-template<class T> inline typename std::enable_if<IsIntegral<T>::value, Color4<T>>::type fromSrgbAlpha(const Vector4<typename Color4<T>::FloatingPointType>& srgbAlpha) {
+template<class T, typename std::enable_if<IsIntegral<T>::value, int>::type = 0> inline Color4<T> fromSrgbAlpha(const Vector4<typename Color4<T>::FloatingPointType>& srgbAlpha) {
     return {fromSrgb<T>(srgbAlpha.rgb()), pack<T>(srgbAlpha.a())};
 }
 template<class T, class Integral> inline Color3<T> fromSrgbIntegral(const Vector3<Integral>& srgb) {
@@ -4004,40 +4071,40 @@ template<class T, class Integral> inline Color4<T> fromSrgbAlphaIntegral(const V
     return fromSrgbAlpha<T>(unpack<Vector4<typename Color4<T>::FloatingPointType>>(srgbAlpha));
 }
 
-template<class T> inline typename std::enable_if<IsFloatingPoint<T>::value, Color3<T>>::type fromLinearRgbInt(UnsignedInt linear) {
+template<class T, typename std::enable_if<IsFloatingPoint<T>::value, int>::type = 0> inline Color3<T> fromLinearRgbInt(UnsignedInt linear) {
     return {unpack<T>(UnsignedByte(linear >> 16)),
             unpack<T>(UnsignedByte(linear >> 8)),
             unpack<T>(UnsignedByte(linear))};
 }
-template<class T> inline typename std::enable_if<IsFloatingPoint<T>::value, Color4<T>>::type fromLinearRgbaInt(UnsignedInt linear) {
+template<class T, typename std::enable_if<IsFloatingPoint<T>::value, int>::type = 0> inline Color4<T> fromLinearRgbaInt(UnsignedInt linear) {
     return {unpack<T>(UnsignedByte(linear >> 24)),
             unpack<T>(UnsignedByte(linear >> 16)),
             unpack<T>(UnsignedByte(linear >> 8)),
             unpack<T>(UnsignedByte(linear))};
 }
-template<class T> inline typename std::enable_if<IsIntegral<T>::value, Color3<T>>::type fromLinearRgbInt(UnsignedInt linear) {
+template<class T, typename std::enable_if<IsIntegral<T>::value, int>::type = 0> inline Color3<T> fromLinearRgbInt(UnsignedInt linear) {
     return {pack<T>(unpack<Float>(UnsignedByte(linear >> 16))),
             pack<T>(unpack<Float>(UnsignedByte(linear >> 8))),
             pack<T>(unpack<Float>(UnsignedByte(linear)))};
 }
-template<class T> inline typename std::enable_if<IsIntegral<T>::value, Color4<T>>::type fromLinearRgbaInt(UnsignedInt linear) {
+template<class T, typename std::enable_if<IsIntegral<T>::value, int>::type = 0> inline Color4<T> fromLinearRgbaInt(UnsignedInt linear) {
     return {pack<T>(unpack<Float>(UnsignedByte(linear >> 24))),
             pack<T>(unpack<Float>(UnsignedByte(linear >> 16))),
             pack<T>(unpack<Float>(UnsignedByte(linear >> 8))),
             pack<T>(unpack<Float>(UnsignedByte(linear)))};
 }
 
-template<class T> Vector3<typename Color3<T>::FloatingPointType> toSrgb(typename std::enable_if<IsFloatingPoint<T>::value, const Color3<T>&>::type rgb) {
+template<class T, typename std::enable_if<IsFloatingPoint<T>::value, int>::type = 0> Vector3<typename Color3<T>::FloatingPointType> toSrgb(const Color3<T>& rgb) {
     constexpr const T a = T(0.055);
     return lerp(rgb*T(12.92), (T(1.0) + a)*pow(rgb, T(1.0)/T(2.4)) - Vector3<T>{a}, rgb > Vector3<T>(T(0.0031308)));
 }
-template<class T> Vector4<typename Color4<T>::FloatingPointType> toSrgbAlpha(typename std::enable_if<IsFloatingPoint<T>::value, const Color4<T>&>::type rgba) {
+template<class T, typename std::enable_if<IsFloatingPoint<T>::value, int>::type = 0> Vector4<typename Color4<T>::FloatingPointType> toSrgbAlpha(const Color4<T>& rgba) {
     return {toSrgb<T>(rgba.rgb()), rgba.a()};
 }
-template<class T> inline Vector3<typename Color3<T>::FloatingPointType> toSrgb(typename std::enable_if<IsIntegral<T>::value, const Color3<T>&>::type rgb) {
+template<class T, typename std::enable_if<IsIntegral<T>::value, int>::type = 0> inline Vector3<typename Color3<T>::FloatingPointType> toSrgb(const Color3<T>& rgb) {
     return toSrgb<typename Color3<T>::FloatingPointType>(unpack<Color3<typename Color3<T>::FloatingPointType>>(rgb));
 }
-template<class T> inline Vector4<typename Color4<T>::FloatingPointType> toSrgbAlpha(typename std::enable_if<IsIntegral<T>::value, const Color4<T>&>::type rgba) {
+template<class T, typename std::enable_if<IsIntegral<T>::value, int>::type = 0> inline Vector4<typename Color4<T>::FloatingPointType> toSrgbAlpha(const Color4<T>& rgba) {
     return {toSrgb<T>(rgba.rgb()), unpack<typename Color3<T>::FloatingPointType>(rgba.a())};
 }
 template<class T, class Integral> inline Vector3<Integral> toSrgbIntegral(const Color3<T>& rgb) {
@@ -4049,54 +4116,78 @@ template<class T, class Integral> inline Vector4<Integral> toSrgbAlphaIntegral(c
     return pack<Vector4<Integral>>(toSrgbAlpha<T>(rgba));
 }
 
-template<class T> inline typename std::enable_if<IsFloatingPoint<T>::value, UnsignedInt>::type toLinearRgbInt(const Color3<T>& linear) {
+template<class T, typename std::enable_if<IsFloatingPoint<T>::value, int>::type = 0> inline UnsignedInt toLinearRgbInt(const Color3<T>& linear) {
     return (pack<UnsignedByte>(linear[0]) << 16) |
            (pack<UnsignedByte>(linear[1]) << 8) |
             pack<UnsignedByte>(linear[2]);
 }
-template<class T> inline typename std::enable_if<IsFloatingPoint<T>::value, UnsignedInt>::type toLinearRgbaInt(const Color4<T>& linear) {
+template<class T, typename std::enable_if<IsFloatingPoint<T>::value, int>::type = 0> inline UnsignedInt toLinearRgbaInt(const Color4<T>& linear) {
     return (pack<UnsignedByte>(linear[0]) << 24) |
            (pack<UnsignedByte>(linear[1]) << 16) |
            (pack<UnsignedByte>(linear[2]) << 8) |
             pack<UnsignedByte>(linear[3]);
 }
-template<class T> inline typename std::enable_if<IsIntegral<T>::value, UnsignedInt>::type toLinearRgbInt(const Color3<T>& linear) {
+template<class T, typename std::enable_if<IsIntegral<T>::value, int>::type = 0> inline UnsignedInt toLinearRgbInt(const Color3<T>& linear) {
     return (pack<UnsignedByte>(unpack<Float>(linear[0])) << 16) |
            (pack<UnsignedByte>(unpack<Float>(linear[1])) << 8) |
             pack<UnsignedByte>(unpack<Float>(linear[2]));
 }
-template<class T> inline typename std::enable_if<IsIntegral<T>::value, UnsignedInt>::type toLinearRgbaInt(const Color4<T>& linear) {
+template<class T, typename std::enable_if<IsIntegral<T>::value, int>::type = 0> inline UnsignedInt toLinearRgbaInt(const Color4<T>& linear) {
     return (pack<UnsignedByte>(unpack<Float>(linear[0])) << 24) |
            (pack<UnsignedByte>(unpack<Float>(linear[1])) << 16) |
            (pack<UnsignedByte>(unpack<Float>(linear[2])) << 8) |
             pack<UnsignedByte>(unpack<Float>(linear[3]));
 }
 
-template<class T> typename std::enable_if<IsFloatingPoint<T>::value, Color3<T>>::type fromXyz(const Vector3<T>& xyz) {
+template<class T, typename std::enable_if<IsFloatingPoint<T>::value, int>::type = 0> Color3<T> fromXyz(const Vector3<T>& xyz) {
     return Matrix3x3<T>{
         Vector3<T>{T(12831)/T(3959), T(-851781)/T(878810), T(705)/T(12673)},
         Vector3<T>{T(-329)/T(214), T(1648619)/T(878810), T(-2585)/T(12673)},
         Vector3<T>{T(-1974)/T(3959), T(36519)/T(878810), T(705)/T(667)}}*xyz;
 }
-template<class T> inline typename std::enable_if<IsIntegral<T>::value, Color3<T>>::type fromXyz(const Vector3<typename Color3<T>::FloatingPointType>& xyz) {
+template<class T, typename std::enable_if<IsIntegral<T>::value, int>::type = 0> inline Color3<T> fromXyz(const Vector3<typename Color3<T>::FloatingPointType>& xyz) {
     return pack<Color3<T>>(fromXyz<typename Color3<T>::FloatingPointType>(xyz));
 }
 
-template<class T> Vector3<typename Color3<T>::FloatingPointType> toXyz(typename std::enable_if<IsFloatingPoint<T>::value, const Color3<T>&>::type rgb) {
+template<class T, typename std::enable_if<IsFloatingPoint<T>::value, int>::type = 0> Vector3<typename Color3<T>::FloatingPointType> toXyz(const Color3<T>& rgb) {
     return (Matrix3x3<T>{
         Vector3<T>{T(506752)/T(1228815), T(87098)/T(409605), T(7918)/T(409605)},
         Vector3<T>{T(87881)/T(245763), T(175762)/T(245763), T(87881)/T(737289)},
         Vector3<T>{T(12673)/T(70218), T(12673)/T(175545), T(1001167)/T(1053270)}})*rgb;
 }
-template<class T> inline Vector3<typename Color3<T>::FloatingPointType> toXyz(typename std::enable_if<IsIntegral<T>::value, const Color3<T>&>::type rgb) {
+template<class T, typename std::enable_if<IsIntegral<T>::value, int>::type = 0> inline Vector3<typename Color3<T>::FloatingPointType> toXyz(const Color3<T>& rgb) {
     return toXyz<typename Color3<T>::FloatingPointType>(unpack<Color3<typename Color3<T>::FloatingPointType>>(rgb));
 }
 
+template<class T, typename std::enable_if<IsFloatingPoint<T>::value, int>::type = 0> constexpr Color4<T> premultiplied(const Color4<T>& color) {
+    return {color.rgb()*color.a(), color.a()};
+}
+template<class T, typename std::enable_if<IsIntegral<T>::value, int>::type = 0> constexpr Color4<T> premultiplied(const Color4<T>& color) {
+    return {
+        T(typename Color4<T>::FloatingPointType(color.r())*color.a()/bitMax<T>() + typename Color4<T>::FloatingPointType(0.5)),
+        T(typename Color4<T>::FloatingPointType(color.g())*color.a()/bitMax<T>() + typename Color4<T>::FloatingPointType(0.5)),
+        T(typename Color4<T>::FloatingPointType(color.b())*color.a()/bitMax<T>() + typename Color4<T>::FloatingPointType(0.5)),
+        color.a()
+    };
+}
+
+template<class T, typename std::enable_if<IsFloatingPoint<T>::value, int>::type = 0> constexpr Color4<T> unpremultiplied(const Color4<T>& color) {
+    return {color.a() == T(0) ? Color3<T>{} : color.rgb()/color.a(), color.a()};
+}
+template<class T, typename std::enable_if<IsIntegral<T>::value, int>::type = 0> constexpr Color4<T> unpremultiplied(const Color4<T>& color) {
+    return color.a() == T(0) ? Color4<T>{} : Color4<T>{
+        T(typename Color4<T>::FloatingPointType(min(color.r(), color.a()))*bitMax<T>()/color.a() + typename Color4<T>::FloatingPointType(0.5)),
+        T(typename Color4<T>::FloatingPointType(min(color.g(), color.a()))*bitMax<T>()/color.a() + typename Color4<T>::FloatingPointType(0.5)),
+        T(typename Color4<T>::FloatingPointType(min(color.b(), color.a()))*bitMax<T>()/color.a() + typename Color4<T>::FloatingPointType(0.5)),
+        color.a()
+    };
+}
+
 #if !defined(CORRADE_MSVC2017_COMPATIBILITY) || defined(CORRADE_MSVC2015_COMPATIBILITY)
-template<class T> constexpr typename std::enable_if<IsFloatingPoint<T>::value, T>::type fullChannel() {
+template<class T, typename std::enable_if<IsFloatingPoint<T>::value, int>::type = 0> constexpr T fullChannel() {
     return T(1.0);
 }
-template<class T> constexpr typename std::enable_if<IsIntegral<T>::value, T>::type fullChannel() {
+template<class T, typename std::enable_if<IsIntegral<T>::value, int>::type = 0> constexpr T fullChannel() {
     return Implementation::bitMax<T>();
 }
 #else
@@ -4384,6 +4475,14 @@ class Color4: public Vector4<T> {
 
         Vector3<FloatingPointType> toXyz() const {
             return Implementation::toXyz<T>(rgb());
+        }
+
+        constexpr Color4<T> premultiplied() const {
+            return Implementation::premultiplied(*this);
+        }
+
+        constexpr Color4<T> unpremultiplied() const {
+            return Implementation::unpremultiplied(*this);
         }
 
         Color3<T>& xyz() { return Color3<T>::from(Vector4<T>::data()); }
@@ -5112,9 +5211,9 @@ template<class T> class CubicHermite {
     public:
         typedef T Type;
 
-        template<UnsignedInt dimensions, class U> static
-        typename std::enable_if<std::is_base_of<Vector<dimensions, U>, T>::value, CubicHermite<T>>::type
-        fromBezier(const CubicBezier<dimensions, U>& a, const CubicBezier<dimensions, U>& b) {
+        template<UnsignedInt dimensions, class U
+            , typename std::enable_if<std::is_base_of<Vector<dimensions, U>, T>::value, int>::type = 0
+        > static CubicHermite<T> fromBezier(const CubicBezier<dimensions, U>& a, const CubicBezier<dimensions, U>& b) {
             return CORRADE_CONSTEXPR_DEBUG_ASSERT(a[3] == b[0],
                 "Math::CubicHermite::fromBezier(): segments are not adjacent"),
                 CubicHermite<T>{3*(a[3] - a[2]), a[3], 3*(b[1] - a[3])};
@@ -5124,7 +5223,8 @@ template<class T> class CubicHermite {
 
         constexpr explicit CubicHermite(ZeroInitT) noexcept: CubicHermite{ZeroInit, typename std::conditional<std::is_constructible<T, ZeroInitT>::value, ZeroInitT*, void*>::type{}} {}
 
-        template<class U = T, class = typename std::enable_if<std::is_constructible<U, IdentityInitT>::value>::type> constexpr explicit CubicHermite(IdentityInitT) noexcept: _inTangent{ZeroInit}, _point{IdentityInit}, _outTangent{ZeroInit} {}
+        template<class U = T, typename std::enable_if<std::is_constructible<U, IdentityInitT>::value, int>::type = 0>
+        constexpr explicit CubicHermite(IdentityInitT) noexcept: _inTangent{ZeroInit}, _point{IdentityInit}, _outTangent{ZeroInit} {}
 
         explicit CubicHermite(Magnum::NoInitT) noexcept: CubicHermite{Magnum::NoInit, typename std::conditional<std::is_constructible<T, Magnum::NoInitT>::value, Magnum::NoInitT*, void*>::type{}} {}
 
@@ -5388,11 +5488,12 @@ template<class T> class Dual {
 
         constexpr /*implicit*/ Dual() noexcept: _real{}, _dual{} {}
 
-        template<class U = T, class = typename std::enable_if<std::is_standard_layout<U>::value && std::is_trivial<U>::value>::type> constexpr explicit Dual(ZeroInitT) noexcept: _real{}, _dual{} {}
-        template<class U = T, class V = T, class = typename std::enable_if<std::is_constructible<U, ZeroInitT>::value>::type> constexpr explicit Dual(ZeroInitT) noexcept: _real{ZeroInit}, _dual{ZeroInit} {}
+        template<class U = T, typename std::enable_if<std::is_standard_layout<U>::value && std::is_trivial<U>::value, int>::type = 0> constexpr explicit Dual(ZeroInitT) noexcept: _real{}, _dual{} {}
+        template<class U = T, typename std::enable_if<std::is_constructible<U, ZeroInitT>::value, int>::type = 0>
+        constexpr explicit Dual(ZeroInitT) noexcept: _real{ZeroInit}, _dual{ZeroInit} {}
 
-        template<class U = T, class = typename std::enable_if<std::is_standard_layout<U>::value && std::is_trivial<U>::value>::type> explicit Dual(Magnum::NoInitT) noexcept {}
-        template<class U = T, class V = T, class = typename std::enable_if<std::is_constructible<U, Magnum::NoInitT>::value>::type> explicit Dual(Magnum::NoInitT) noexcept: _real{Magnum::NoInit}, _dual{Magnum::NoInit} {}
+        template<class U = T, typename std::enable_if<std::is_standard_layout<U>::value && std::is_trivial<U>::value, int>::type = 0> explicit Dual(Magnum::NoInitT) noexcept {}
+        template<class U = T, typename std::enable_if<std::is_constructible<U, Magnum::NoInitT>::value, int>::type = 0> explicit Dual(Magnum::NoInitT) noexcept: _real{Magnum::NoInit}, _dual{Magnum::NoInit} {}
 
         #if !defined(CORRADE_MSVC2017_COMPATIBILITY) || defined(CORRADE_MSVC2015_COMPATIBILITY)
         constexpr /*implicit*/ Dual(const T& real, const T& dual = T()) noexcept: _real(real), _dual(dual) {}
@@ -5455,15 +5556,19 @@ template<class T> class Dual {
             return {_real*other._real, _real*other._dual + _dual*other._real};
         }
 
-        template<class U, class V = typename std::enable_if<!Implementation::IsDual<U>::value, void>::type> Dual<decltype(std::declval<T>()*std::declval<U>())> operator*(const U& other) const {
+        template<class U
+            , typename std::enable_if<!Implementation::IsDual<U>::value, int>::type = 0
+        > Dual<decltype(std::declval<T>()*std::declval<U>())> operator*(const U& other) const {
             return {_real*other, _dual*other};
         }
 
-        template<class U> auto operator/(const Dual<U>& other) const -> Dual<decltype(std::declval<T>()/std::declval<U>())> {
+        template<class U> Dual<decltype(std::declval<T>()/std::declval<U>())> operator/(const Dual<U>& other) const {
             return {_real/other._real, (_dual*other._real - _real*other._dual)/(other._real*other._real)};
         }
 
-        template<class U, class V = typename std::enable_if<!Implementation::IsDual<U>::value, Dual<decltype(std::declval<T>()/std::declval<U>())>>::type> V operator/(const U& other) const {
+        template<class U,
+            typename std::enable_if<!Implementation::IsDual<U>::value, int>::type = 0
+        > Dual<decltype(std::declval<T>()/std::declval<U>())> operator/(const U& other) const {
             return {_real/other, _dual/other};
         }
 
@@ -5475,7 +5580,9 @@ template<class T> class Dual {
         T _real, _dual;
 };
 
-template<class T, class U, class V = typename std::enable_if<!Implementation::IsDual<T>::value, Dual<decltype(std::declval<T>()*std::declval<U>())>>::type> inline V operator*(const T& a, const Dual<U>& b) {
+template<class T, class U
+    , typename std::enable_if<!Implementation::IsDual<T>::value, int>::type = 0
+> inline Dual<decltype(std::declval<T>()*std::declval<U>())> operator*(const T& a, const Dual<U>& b) {
     return {a*b.real(), a*b.dual()};
 }
 
@@ -6597,13 +6704,13 @@ template<UnsignedInt dimensions, class T> class Range {
         explicit Range(Magnum::NoInitT) noexcept: Range<dimensions, T>{Magnum::NoInit, typename std::conditional<dimensions == 1, void*, Magnum::NoInitT*>::type{}} {}
 
         constexpr /*implicit*/ Range(const VectorType& min, const VectorType& max) noexcept: _min{min}, _max{max} {}
-        template<UnsignedInt d = dimensions, class = typename std::enable_if<d == 1>::type>
+        template<UnsignedInt d = dimensions, typename std::enable_if<d == 1, int>::type = 0>
         constexpr /*implicit*/ Range(const Vector<dimensions, T>& min, const Vector<dimensions, T>& max) noexcept: _min{Implementation::RangeTraits<dimensions, T>::fromVector(min)}, _max{Implementation::RangeTraits<dimensions, T>::fromVector(max)} {}
 
         constexpr /*implicit*/ Range(const Containers::Pair<VectorType, VectorType>& minmax) noexcept:
             _min{minmax.first()}, _max{minmax.second()} {}
 
-        template<UnsignedInt d = dimensions, class = typename std::enable_if<d != 1>::type>
+        template<UnsignedInt d = dimensions, typename std::enable_if<d != 1, int>::type = 0>
         constexpr /*implicit*/ Range(const Containers::Pair<Vector<dimensions, T>, Vector<dimensions, T>>& minmax) noexcept: _min{minmax.first()}, _max{minmax.second()} {}
 
         template<class U> constexpr explicit Range(const Range<dimensions, U>& other) noexcept: _min(other._min), _max(other._max) {}
@@ -6649,7 +6756,7 @@ template<UnsignedInt dimensions, class T> class Range {
             return {_min*scaling, _max*scaling};
         }
 
-        template<UnsignedInt d = dimensions, class = typename std::enable_if<d != 1>::type>
+        template<UnsignedInt d = dimensions, typename std::enable_if<d != 1, int>::type = 0>
         Range<dimensions, T> scaled(T scaling) const {
             return {_min*scaling, _max*scaling};
         }
@@ -6658,7 +6765,7 @@ template<UnsignedInt dimensions, class T> class Range {
             return fromCenter(center(), size()*scaling/T(2));
         }
 
-        template<UnsignedInt d = dimensions, class = typename std::enable_if<d != 1>::type>
+        template<UnsignedInt d = dimensions, typename std::enable_if<d != 1, int>::type = 0>
         Range<dimensions, T> scaledFromCenter(T scaling) const {
             return fromCenter(center(), size()*scaling/T(2));
         }
@@ -8261,7 +8368,8 @@ template<class To, class T> inline To cast(const Math::Quaternion<T>& from) {
 
 #endif
 #endif
-#ifdef MAGNUM_MATH_IMPLEMENTATION
+#if defined(MAGNUM_MATH_IMPLEMENTATION) && !defined(MagnumMath_hpp_implementation)
+#define MagnumMath_hpp_implementation
 namespace Magnum { namespace Math {
 
 #if !defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG)

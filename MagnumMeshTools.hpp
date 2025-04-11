@@ -24,11 +24,13 @@
     If you need the deinlined symbols to be exported from a shared library,
     `#define MAGNUM_MESHTOOLS_EXPORT` as appropriate.
 
+    v2020.06-3290-g454e9 (2025-04-11)
+    -   Include guard for the implementation part to prevent double definitions
     v2020.06-3128-g47b22 (2025-01-07)
     -   Initial release
 
-    Generated from Corrade v2020.06-1847-g9be0 (2025-01-07) and
-        Magnum v2020.06-3128-g47b22 (2025-01-07), 765 / 283 LoC
+    Generated from Corrade v2020.06-1890-g77f9f (2025-04-11) and
+        Magnum v2020.06-3290-g454e9 (2025-04-11), 768 / 283 LoC
 */
 
 /*
@@ -239,7 +241,8 @@ MAGNUM_MESHTOOLS_EXPORT void generateQuadIndicesInto(const Containers::StridedAr
 }}
 
 #endif
-#ifdef MAGNUM_MESHTOOLS_IMPLEMENTATION
+#if defined(MAGNUM_MESHTOOLS_IMPLEMENTATION) && !defined(MagnumMeshTools_hpp_implementation)
+#define MagnumMeshTools_hpp_implementation
 #if !defined(CORRADE_ASSERT_UNREACHABLE) && !defined(NDEBUG)
 #include <cassert>
 #endif
