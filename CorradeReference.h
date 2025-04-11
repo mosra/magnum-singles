@@ -17,6 +17,8 @@
     `#define CORRADE_REFERENCE_STL_COMPATIBILITY` before including the file.
     Including it multiple times with different macros defined works too.
 
+    v2020.06-1890-g77f9f (2025-04-11)
+    -   Cleanup and unification of SFINAE code, no functional change
     v2020.06-1687-g6b5f (2024-06-29)
     -   Added a reference() helper for convenient construction
     v2020.06-1459-g65d9b (2023-08-28)
@@ -30,14 +32,14 @@
     v2018.10-183-g4eb1adc0 (2019-01-23)
     -   Initial release
 
-    Generated from Corrade v2020.06-1687-g6b5f (2024-06-29), 131 / 1630 LoC
+    Generated from Corrade v2020.06-1890-g77f9f (2025-04-11), 135 / 1628 LoC
 */
 
 /*
     This file is part of Corrade.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
-                2017, 2018, 2019, 2020, 2021, 2022, 2023
+                2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025
               Vladimír Vondruš <mosra@centrum.cz>
 
     Permission is hereby granted, free of charge, to any person obtaining a
@@ -80,7 +82,9 @@ template<class T> class Reference {
 
         Reference(T&&) = delete;
 
-        template<class U, class = typename std::enable_if<std::is_base_of<T, U>::value>::type> constexpr /*implicit*/ Reference(Reference<U> other) noexcept: _reference{other._reference} {}
+        template<class U
+            , typename std::enable_if<std::is_base_of<T, U>::value, int>::type = 0
+        > constexpr /*implicit*/ Reference(Reference<U> other) noexcept: _reference{other._reference} {}
 
         template<class U, class = decltype(Implementation::ReferenceConverter<T, U>::to(std::declval<Reference<T>>()))> constexpr /*implicit*/ operator U() const {
             return Implementation::ReferenceConverter<T, U>::to(*this);

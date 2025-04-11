@@ -19,6 +19,9 @@
     `#define CORRADE_TRIPLE_STL_COMPATIBILITY` before including the file.
     Including it multiple times with different macros defined works too.
 
+    v2020.06-1890-g77f9f (2025-04-11)
+    -   NoInit construction now works also with mixed trivial and class types
+    -   Cleanup and unification of SFINAE code
     v2020.06-1846-gc4cdf (2025-01-07)
     -   Non-const C++17 structured bindings are now constexpr as well
     -   Structured bindings of const types now work even w/o <utility>
@@ -30,7 +33,7 @@
     v2020.06-1454-gfc3b7 (2023-08-27)
     -   Initial release
 
-    Generated from Corrade v2020.06-1846-gc4cdf (2025-01-07), 476 / 1746 LoC
+    Generated from Corrade v2020.06-1890-g77f9f (2025-04-11), 489 / 1769 LoC
 */
 
 /*
@@ -207,8 +210,14 @@ template<class F, class S, class T> class Triple {
         constexpr explicit Triple(Corrade::ValueInitT) noexcept(std::is_nothrow_constructible<F>::value && std::is_nothrow_constructible<S>::value && std::is_nothrow_constructible<T>::value):
             _first(), _second(), _third() {}
 
-        template<class F_ = F, class = typename std::enable_if<std::is_standard_layout<F_>::value && std::is_standard_layout<S>::value && std::is_standard_layout<T>::value && std::is_trivial<F_>::value && std::is_trivial<S>::value && std::is_trivial<T>::value>::type> explicit Triple(Corrade::NoInitT) noexcept {}
-        template<class F_ = F, class S_ = S, class = typename std::enable_if<std::is_constructible<F_, Corrade::NoInitT>::value && std::is_constructible<S_, Corrade::NoInitT>::value && std::is_constructible<T, Corrade::NoInitT>::value>::type> explicit Triple(Corrade::NoInitT) noexcept(std::is_nothrow_constructible<F, Corrade::NoInitT>::value && std::is_nothrow_constructible<S, Corrade::NoInitT>::value && std::is_nothrow_constructible<T, Corrade::NoInitT>::value): _first{Corrade::NoInit}, _second{Corrade::NoInit}, _third{Corrade::NoInit} {}
+        template<class F_ = F, typename std::enable_if<std::is_standard_layout<F_>::value && std::is_trivial<F_>::value && std::is_standard_layout<S>::value && std::is_trivial<S>::value && std::is_standard_layout<T>::value && std::is_trivial<T>::value, int>::type = 0> explicit Triple(Corrade::NoInitT) noexcept {}
+        template<class F_ = F, typename std::enable_if<std::is_standard_layout<F_>::value && std::is_trivial<F_>::value && std::is_standard_layout<S>::value && std::is_trivial<S>::value && std::is_constructible<T, Corrade::NoInitT>::value, int>::type = 0> explicit Triple(Corrade::NoInitT) noexcept(std::is_nothrow_constructible<T, Corrade::NoInitT>::value): _third{Corrade::NoInit} {}
+        template<class F_ = F, typename std::enable_if<std::is_standard_layout<F_>::value && std::is_trivial<F_>::value && std::is_constructible<S, Corrade::NoInitT>::value && std::is_standard_layout<T>::value && std::is_trivial<T>::value, int>::type = 0> explicit Triple(Corrade::NoInitT) noexcept(std::is_nothrow_constructible<S, Corrade::NoInitT>::value): _second{Corrade::NoInit} {}
+        template<class F_ = F, typename std::enable_if<std::is_constructible<F_, Corrade::NoInitT>::value && std::is_standard_layout<S>::value && std::is_trivial<S>::value && std::is_standard_layout<T>::value && std::is_trivial<T>::value, int>::type = 0> explicit Triple(Corrade::NoInitT) noexcept(std::is_nothrow_constructible<F, Corrade::NoInitT>::value): _first{Corrade::NoInit} {}
+        template<class F_ = F, typename std::enable_if<std::is_standard_layout<F_>::value && std::is_trivial<F_>::value && std::is_constructible<S, Corrade::NoInitT>::value && std::is_constructible<T, Corrade::NoInitT>::value, int>::type = 0> explicit Triple(Corrade::NoInitT) noexcept(std::is_nothrow_constructible<S, Corrade::NoInitT>::value && std::is_nothrow_constructible<T, Corrade::NoInitT>::value): _second{Corrade::NoInit}, _third{Corrade::NoInit} {}
+        template<class F_ = F, typename std::enable_if<std::is_constructible<F_, Corrade::NoInitT>::value && std::is_standard_layout<S>::value && std::is_trivial<S>::value && std::is_constructible<T, Corrade::NoInitT>::value, int>::type = 0> explicit Triple(Corrade::NoInitT) noexcept(std::is_nothrow_constructible<F, Corrade::NoInitT>::value && std::is_nothrow_constructible<T, Corrade::NoInitT>::value): _first{Corrade::NoInit}, _third{Corrade::NoInit} {}
+        template<class F_ = F, typename std::enable_if<std::is_constructible<F_, Corrade::NoInitT>::value && std::is_constructible<S, Corrade::NoInitT>::value && std::is_standard_layout<T>::value && std::is_trivial<T>::value, int>::type = 0> explicit Triple(Corrade::NoInitT) noexcept(std::is_nothrow_constructible<F, Corrade::NoInitT>::value && std::is_nothrow_constructible<S, Corrade::NoInitT>::value): _first{Corrade::NoInit}, _second{Corrade::NoInit} {}
+        template<class F_ = F, typename std::enable_if<std::is_constructible<F_, Corrade::NoInitT>::value && std::is_constructible<S, Corrade::NoInitT>::value && std::is_constructible<T, Corrade::NoInitT>::value, int>::type = 0> explicit Triple(Corrade::NoInitT) noexcept(std::is_nothrow_constructible<F, Corrade::NoInitT>::value && std::is_nothrow_constructible<S, Corrade::NoInitT>::value && std::is_nothrow_constructible<T, Corrade::NoInitT>::value): _first{Corrade::NoInit}, _second{Corrade::NoInit}, _third{Corrade::NoInit} {}
 
         constexpr /*implicit*/ Triple() noexcept(std::is_nothrow_constructible<F>::value && std::is_nothrow_constructible<S>::value && std::is_nothrow_constructible<T>::value):
             #ifdef CORRADE_MSVC2015_COMPATIBILITY
@@ -275,7 +284,9 @@ template<class F, class S, class T> class Triple {
             #endif
             {}
 
-        template<class OtherF, class OtherS, class OtherT, class = typename std::enable_if<std::is_constructible<F, const OtherF&>::value && std::is_constructible<S, const OtherS&>::value && std::is_constructible<T, const OtherT&>::value>::type> constexpr explicit Triple(const Triple<OtherF, OtherS, OtherT>& other) noexcept(std::is_nothrow_constructible<F, const OtherF&>::value && std::is_nothrow_constructible<S, const OtherS&>::value && std::is_nothrow_constructible<T, const OtherT&>::value):
+        template<class OtherF, class OtherS, class OtherT
+            , typename std::enable_if<std::is_constructible<F, const OtherF&>::value && std::is_constructible<S, const OtherS&>::value && std::is_constructible<T, const OtherT&>::value, int>::type = 0
+        > constexpr explicit Triple(const Triple<OtherF, OtherS, OtherT>& other) noexcept(std::is_nothrow_constructible<F, const OtherF&>::value && std::is_nothrow_constructible<S, const OtherS&>::value && std::is_nothrow_constructible<T, const OtherT&>::value):
             #if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG) && __GNUC__ < 5
             _first(F(other._first)), _second(S(other._second)), _third(T(other._third))
             #else
@@ -283,7 +294,9 @@ template<class F, class S, class T> class Triple {
             #endif
             {}
 
-        template<class OtherF, class OtherS, class OtherT, class = typename std::enable_if<std::is_constructible<F, OtherF&&>::value && std::is_constructible<S, OtherS&&>::value && std::is_constructible<T, OtherT&&>::value>::type> constexpr explicit Triple(Triple<OtherF, OtherS, OtherT>&& other) noexcept(std::is_nothrow_constructible<F, OtherF&&>::value && std::is_nothrow_constructible<S, OtherS&&>::value && std::is_nothrow_constructible<T, OtherT&&>::value):
+        template<class OtherF, class OtherS, class OtherT
+            , typename std::enable_if<std::is_constructible<F, OtherF&&>::value && std::is_constructible<S, OtherS&&>::value && std::is_constructible<T, OtherT&&>::value, int>::type = 0
+        > constexpr explicit Triple(Triple<OtherF, OtherS, OtherT>&& other) noexcept(std::is_nothrow_constructible<F, OtherF&&>::value && std::is_nothrow_constructible<S, OtherS&&>::value && std::is_nothrow_constructible<T, OtherT&&>::value):
             #if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG) && __GNUC__ < 5
             _first(F(Utility::move(other._first))), _second(S(Utility::move(other._second))), _third(T(Utility::move(other._third)))
             #else
@@ -327,31 +340,31 @@ template<class F, class S, class T> class Triple {
         template<class, class, class> friend class Triple;
 
         #if CORRADE_CXX_STANDARD > 201402
-        template<std::size_t index, typename std::enable_if<index == 0, F>::type* = nullptr> constexpr friend const F& get(const Triple<F, S, T>& value) {
+        template<std::size_t index, typename std::enable_if<index == 0, int>::type = 0> constexpr friend const F& get(const Triple<F, S, T>& value) {
             return value._first;
         }
-        template<std::size_t index, typename std::enable_if<index == 0, F>::type* = nullptr> CORRADE_CONSTEXPR14 friend F& get(Triple<F, S, T>& value) {
+        template<std::size_t index, typename std::enable_if<index == 0, int>::type = 0> CORRADE_CONSTEXPR14 friend F& get(Triple<F, S, T>& value) {
             return value._first;
         }
-        template<std::size_t index, typename std::enable_if<index == 0, F>::type* = nullptr> CORRADE_CONSTEXPR14 friend F&& get(Triple<F, S, T>&& value) {
+        template<std::size_t index, typename std::enable_if<index == 0, int>::type = 0> CORRADE_CONSTEXPR14 friend F&& get(Triple<F, S, T>&& value) {
             return Utility::move(value._first);
         }
-        template<std::size_t index, typename std::enable_if<index == 1, S>::type* = nullptr> constexpr friend const S& get(const Triple<F, S, T>& value) {
+        template<std::size_t index, typename std::enable_if<index == 1, int>::type = 0> constexpr friend const S& get(const Triple<F, S, T>& value) {
             return value._second;
         }
-        template<std::size_t index, typename std::enable_if<index == 1, S>::type* = nullptr> CORRADE_CONSTEXPR14 friend S& get(Triple<F, S, T>& value) {
+        template<std::size_t index, typename std::enable_if<index == 1, int>::type = 0> CORRADE_CONSTEXPR14 friend S& get(Triple<F, S, T>& value) {
             return value._second;
         }
-        template<std::size_t index, typename std::enable_if<index == 1, S>::type* = nullptr> CORRADE_CONSTEXPR14 friend S&& get(Triple<F, S, T>&& value) {
+        template<std::size_t index, typename std::enable_if<index == 1, int>::type = 0> CORRADE_CONSTEXPR14 friend S&& get(Triple<F, S, T>&& value) {
             return Utility::move(value._second);
         }
-        template<std::size_t index, typename std::enable_if<index == 2, T>::type* = nullptr> constexpr friend const T& get(const Triple<F, S, T>& value) {
+        template<std::size_t index, typename std::enable_if<index == 2, int>::type = 0> constexpr friend const T& get(const Triple<F, S, T>& value) {
             return value._third;
         }
-        template<std::size_t index, typename std::enable_if<index == 2, T>::type* = nullptr> CORRADE_CONSTEXPR14 friend T& get(Triple<F, S, T>& value) {
+        template<std::size_t index, typename std::enable_if<index == 2, int>::type = 0> CORRADE_CONSTEXPR14 friend T& get(Triple<F, S, T>& value) {
             return value._third;
         }
-        template<std::size_t index, typename std::enable_if<index == 2, T>::type* = nullptr> CORRADE_CONSTEXPR14 friend T&& get(Triple<F, S, T>&& value) {
+        template<std::size_t index, typename std::enable_if<index == 2, int>::type = 0> CORRADE_CONSTEXPR14 friend T&& get(Triple<F, S, T>&& value) {
             return Utility::move(value._third);
         }
         #endif

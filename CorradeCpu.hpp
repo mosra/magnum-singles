@@ -23,6 +23,8 @@
     `#define CORRADE_UTILITY_EXPORT` as appropriate. To enable the IFUNC
     functionality, `#define CORRADE_CPU_USE_IFUNC` before including the file.
 
+    v2020.06-1890-g77f9f (2025-04-11)
+    -   Include guard for the implementation part to prevent double definitions
     v2020.06-1846-gc4cdf (2025-01-07)
     -   SFINAE is now done in template args as that's simpler for the compiler
     -   Fixed warnings on ARM with C++20
@@ -44,7 +46,7 @@
     v2020.06-1015-g8cbd6 (2022-08-02)
     -   Initial release
 
-    Generated from Corrade v2020.06-1846-gc4cdf (2025-01-07), 1730 / 1978 LoC
+    Generated from Corrade v2020.06-1890-g77f9f (2025-04-11), 1733 / 1991 LoC
 */
 
 /*
@@ -1646,7 +1648,8 @@ namespace Implementation {
 }
 
 #endif
-#ifdef CORRADE_CPU_IMPLEMENTATION
+#if defined(CORRADE_CPU_IMPLEMENTATION) && !defined(CorradeCpu_hpp_implementation)
+#define CorradeCpu_hpp_implementation
 #if defined(CORRADE_TARGET_ARM) && ((defined(__linux__) && !(defined(CORRADE_TARGET_ANDROID) && __ANDROID_API__ < 18)) || defined(__FreeBSD__))
     #include <sys/auxv.h>
 #elif defined(CORRADE_TARGET_ARM) && defined(CORRADE_TARGET_APPLE)

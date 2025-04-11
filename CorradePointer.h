@@ -17,6 +17,8 @@
     `#define CORRADE_POINTER_STL_COMPATIBILITY` before including the file.
     Including it multiple times with different macros defined works too.
 
+    v2020.06-1890-g77f9f (2025-04-11)
+    -   Cleanup and unification of SFINAE code, no functional change
     v2020.06-1687-g6b5f (2024-06-29)
     -   Deleting pointers to incomplete types is now disallowed to prevent
         resource leaks
@@ -44,14 +46,14 @@
     v2018.10-183-g4eb1adc0 (2019-01-23)
     -   Initial release
 
-    Generated from Corrade v2020.06-1687-g6b5f (2024-06-29), 381 / 1786 LoC
+    Generated from Corrade v2020.06-1890-g77f9f (2025-04-11), 384 / 1784 LoC
 */
 
 /*
     This file is part of Corrade.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
-                2017, 2018, 2019, 2020, 2021, 2022, 2023
+                2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025
               Vladimír Vondruš <mosra@centrum.cz>
 
     Permission is hereby granted, free of charge, to any person obtaining a
@@ -225,8 +227,7 @@ template<class T> class Pointer {
     public:
         typedef T Type;
 
-        template<class U, class = typename std::enable_if<std::is_same<std::nullptr_t, U>::value>::type> /*implicit*/ Pointer(U) noexcept: _pointer{} {}
-
+        template<class U, typename std::enable_if<std::is_same<std::nullptr_t, U>::value, int>::type = 0> /*implicit*/ Pointer(U) noexcept: _pointer{} {}
         /*implicit*/ Pointer() noexcept: _pointer{} {}
 
         explicit Pointer(T* pointer) noexcept: _pointer{pointer} {}
@@ -235,7 +236,9 @@ template<class T> class Pointer {
             Implementation::allocate<T>(Utility::forward<Args>(args)...)
         } {}
 
-        template<class U, class = typename std::enable_if<std::is_base_of<T, U>::value>::type> /*implicit*/ Pointer(Pointer<U>&& other) noexcept: _pointer{other.release()} {
+        template<class U
+            , typename std::enable_if<std::is_base_of<T, U>::value, int>::type = 0
+        > /*implicit*/ Pointer(Pointer<U>&& other) noexcept: _pointer{other.release()} {
             static_assert(std::is_trivially_destructible<U>::value || std::has_virtual_destructor<T>::value, "the derived type should be trivially destructible or the base type should have a virtual destructor");
         }
 

@@ -19,6 +19,9 @@
     `#define CORRADE_PAIR_STL_COMPATIBILITY` before including the file.
     Including it multiple times with different macros defined works too.
 
+    v2020.06-1890-g77f9f (2025-04-11)
+    -   NoInit construction now works also with mixed trivial and class types
+    -   Cleanup and unification of SFINAE code
     v2020.06-1846-gc4cdf (2025-01-07)
     -   Non-const C++17 structured bindings are now constexpr as well
     -   Structured bindings of const types now work even w/o <utility>
@@ -30,7 +33,7 @@
     v2020.06-1454-gfc3b7 (2023-08-27)
     -   Initial release
 
-    Generated from Corrade v2020.06-1846-gc4cdf (2025-01-07), 432 / 1729 LoC
+    Generated from Corrade v2020.06-1890-g77f9f (2025-04-11), 441 / 1748 LoC
 */
 
 /*
@@ -206,8 +209,10 @@ template<class F, class S> class Pair {
         constexpr explicit Pair(Corrade::ValueInitT) noexcept(std::is_nothrow_constructible<F>::value && std::is_nothrow_constructible<S>::value):
             _first(), _second() {}
 
-        template<class F_ = F, class = typename std::enable_if<std::is_standard_layout<F_>::value && std::is_standard_layout<S>::value && std::is_trivial<F_>::value && std::is_trivial<S>::value>::type> explicit Pair(Corrade::NoInitT) noexcept {}
-        template<class F_ = F, class S_ = S, class = typename std::enable_if<std::is_constructible<F_, Corrade::NoInitT>::value && std::is_constructible<S_, Corrade::NoInitT>::value>::type> explicit Pair(Corrade::NoInitT) noexcept(std::is_nothrow_constructible<F, Corrade::NoInitT>::value && std::is_nothrow_constructible<S, Corrade::NoInitT>::value): _first{Corrade::NoInit}, _second{Corrade::NoInit} {}
+        template<class F_ = F, typename std::enable_if<std::is_standard_layout<F_>::value && std::is_trivial<F_>::value && std::is_standard_layout<S>::value && std::is_trivial<S>::value, int>::type = 0> explicit Pair(Corrade::NoInitT) noexcept {}
+        template<class F_ = F, typename std::enable_if<std::is_standard_layout<F_>::value && std::is_trivial<F_>::value &&  std::is_constructible<S, Corrade::NoInitT>::value, int>::type = 0> explicit Pair(Corrade::NoInitT) noexcept(std::is_nothrow_constructible<S, Corrade::NoInitT>::value): _second{Corrade::NoInit} {}
+        template<class F_ = F, typename std::enable_if<std::is_constructible<F_, Corrade::NoInitT>::value && std::is_standard_layout<S>::value && std::is_trivial<S>::value, int>::type = 0> explicit Pair(Corrade::NoInitT) noexcept(std::is_nothrow_constructible<F, Corrade::NoInitT>::value): _first{Corrade::NoInit} {}
+        template<class F_ = F, typename std::enable_if<std::is_constructible<F_, Corrade::NoInitT>::value && std::is_constructible<S, Corrade::NoInitT>::value, int>::type = 0> explicit Pair(Corrade::NoInitT) noexcept(std::is_nothrow_constructible<F, Corrade::NoInitT>::value && std::is_nothrow_constructible<S, Corrade::NoInitT>::value): _first{Corrade::NoInit}, _second{Corrade::NoInit} {}
 
         constexpr /*implicit*/ Pair() noexcept(std::is_nothrow_constructible<F>::value && std::is_nothrow_constructible<S>::value):
             #ifdef CORRADE_MSVC2015_COMPATIBILITY
@@ -246,7 +251,9 @@ template<class F, class S> class Pair {
             #endif
             {}
 
-        template<class OtherF, class OtherS, class = typename std::enable_if<std::is_constructible<F, const OtherF&>::value && std::is_constructible<S, const OtherS&>::value>::type> constexpr explicit Pair(const Pair<OtherF, OtherS>& other) noexcept(std::is_nothrow_constructible<F, const OtherF&>::value && std::is_nothrow_constructible<S, const OtherS&>::value):
+        template<class OtherF, class OtherS
+            , typename std::enable_if<std::is_constructible<F, const OtherF&>::value && std::is_constructible<S, const OtherS&>::value, int>::type = 0
+        > constexpr explicit Pair(const Pair<OtherF, OtherS>& other) noexcept(std::is_nothrow_constructible<F, const OtherF&>::value && std::is_nothrow_constructible<S, const OtherS&>::value):
             #if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG) && __GNUC__ < 5
             _first(F(other._first)), _second(S(other._second))
             #else
@@ -254,7 +261,9 @@ template<class F, class S> class Pair {
             #endif
             {}
 
-        template<class OtherF, class OtherS, class = typename std::enable_if<std::is_constructible<F, OtherF&&>::value && std::is_constructible<S, OtherS&&>::value>::type> constexpr explicit Pair(Pair<OtherF, OtherS>&& other) noexcept(std::is_nothrow_constructible<F, OtherF&&>::value && std::is_nothrow_constructible<S, OtherS&&>::value):
+        template<class OtherF, class OtherS
+            , typename std::enable_if<std::is_constructible<F, OtherF&&>::value && std::is_constructible<S, OtherS&&>::value, int>::type = 0
+        > constexpr explicit Pair(Pair<OtherF, OtherS>&& other) noexcept(std::is_nothrow_constructible<F, OtherF&&>::value && std::is_nothrow_constructible<S, OtherS&&>::value):
             #if defined(CORRADE_TARGET_GCC) && !defined(CORRADE_TARGET_CLANG) && __GNUC__ < 5
             _first(F(Utility::move(other._first))), _second(S(Utility::move(other._second)))
             #else
@@ -294,22 +303,22 @@ template<class F, class S> class Pair {
         template<class, class> friend class Pair;
 
         #if CORRADE_CXX_STANDARD > 201402
-        template<std::size_t index, typename std::enable_if<index == 0, F>::type* = nullptr> constexpr friend const F& get(const Pair<F, S>& value) {
+        template<std::size_t index, typename std::enable_if<index == 0, int>::type = 0> constexpr friend const F& get(const Pair<F, S>& value) {
             return value._first;
         }
-        template<std::size_t index, typename std::enable_if<index == 0, F>::type* = nullptr> CORRADE_CONSTEXPR14 friend F& get(Pair<F, S>& value) {
+        template<std::size_t index, typename std::enable_if<index == 0, int>::type = 0> CORRADE_CONSTEXPR14 friend F& get(Pair<F, S>& value) {
             return value._first;
         }
-        template<std::size_t index, typename std::enable_if<index == 0, F>::type* = nullptr> CORRADE_CONSTEXPR14 friend F&& get(Pair<F, S>&& value) {
+        template<std::size_t index, typename std::enable_if<index == 0, int>::type = 0> CORRADE_CONSTEXPR14 friend F&& get(Pair<F, S>&& value) {
             return Utility::move(value._first);
         }
-        template<std::size_t index, typename std::enable_if<index == 1, S>::type* = nullptr> constexpr friend const S& get(const Pair<F, S>& value) {
+        template<std::size_t index, typename std::enable_if<index == 1, int>::type = 0> constexpr friend const S& get(const Pair<F, S>& value) {
             return value._second;
         }
-        template<std::size_t index, typename std::enable_if<index == 1, S>::type* = nullptr> CORRADE_CONSTEXPR14 friend S& get(Pair<F, S>& value) {
+        template<std::size_t index, typename std::enable_if<index == 1, int>::type = 0> CORRADE_CONSTEXPR14 friend S& get(Pair<F, S>& value) {
             return value._second;
         }
-        template<std::size_t index, typename std::enable_if<index == 1, S>::type* = nullptr> CORRADE_CONSTEXPR14 friend S&& get(Pair<F, S>&& value) {
+        template<std::size_t index, typename std::enable_if<index == 1, int>::type = 0> CORRADE_CONSTEXPR14 friend S&& get(Pair<F, S>&& value) {
             return Utility::move(value._second);
         }
         #endif

@@ -36,6 +36,9 @@
     `#define CORRADE_STRING_STL_VIEW_COMPATIBILITY` before including the file.
     Including it multiple times with different macros defined works too.
 
+    v2020.06-1890-g77f9f (2025-04-11)
+    -   Include guard for the implementation part to prevent double definitions
+    -   Further cleanup and unification of SFINAE code
     v2020.06-1864-g8b00 (2025-02-12)
     -   Removed dependency on Containers::Pair
     v2020.06-1846-gc4cdf (2025-01-07)
@@ -53,7 +56,7 @@
     v2020.06-1502-g147e (2023-09-11)
     -   Initial release
 
-    Generated from Corrade v2020.06-1864-g8b00 (2025-02-12), 2523 / 2179 LoC
+    Generated from Corrade v2020.06-1890-g77f9f (2025-04-11), 2530 / 2198 LoC
 */
 
 /*
@@ -243,8 +246,7 @@ CORRADE_UTILITY_EXPORT
 #endif
 BasicStringView {
     public:
-        template<class U, class = typename std::enable_if<std::is_same<std::nullptr_t, U>::value>::type> constexpr /*implicit*/ BasicStringView(U) noexcept: _data{}, _sizePlusFlags{std::size_t(StringViewFlag::Global)} {}
-
+        template<class U, typename std::enable_if<std::is_same<std::nullptr_t, U>::value, int>::type = 0> constexpr /*implicit*/ BasicStringView(U) noexcept: _data{}, _sizePlusFlags{std::size_t(StringViewFlag::Global)} {}
         constexpr /*implicit*/ BasicStringView() noexcept: _data{}, _sizePlusFlags{std::size_t(StringViewFlag::Global)} {}
 
         constexpr /*implicit*/ BasicStringView(T* data, std::size_t size, StringViewFlags flags = {}) noexcept: _data{data}, _sizePlusFlags{(
@@ -258,11 +260,15 @@ BasicStringView {
 
         /*implicit*/ BasicStringView(String& data) noexcept;
 
-        template<class U = T, class = typename std::enable_if<std::is_const<U>::value>::type> /*implicit*/ BasicStringView(const String& data) noexcept;
+        template<class U = T
+            , typename std::enable_if<std::is_const<U>::value, int>::type = 0
+        > /*implicit*/ BasicStringView(const String& data) noexcept;
 
-        template<class U, class = typename std::enable_if<std::is_same<const U, T>::value>::type> constexpr /*implicit*/ BasicStringView(BasicStringView<U> mutable_) noexcept: _data{mutable_._data}, _sizePlusFlags{mutable_._sizePlusFlags} {}
+        template<class U
+            , typename std::enable_if<std::is_same<const U, T>::value, int>::type = 0
+        > constexpr /*implicit*/ BasicStringView(BasicStringView<U> mutable_) noexcept: _data{mutable_._data}, _sizePlusFlags{mutable_._sizePlusFlags} {}
 
-        template<class U, class = typename std::enable_if<std::is_pointer<U>::value && std::is_convertible<const U&, T*>::value>::type> /*implicit*/ BasicStringView(U data, StringViewFlags extraFlags = {}) noexcept: BasicStringView{data, extraFlags, nullptr} {}
+        template<class U, typename std::enable_if<std::is_pointer<U>::value && std::is_convertible<const U&, T*>::value, int>::type = 0> /*implicit*/ BasicStringView(U data, StringViewFlags extraFlags = {}) noexcept: BasicStringView{data, extraFlags, nullptr} {}
 
         template<class U, class = decltype(Implementation::StringViewConverter<T, typename std::decay<U&&>::type>::from(std::declval<U&&>()))> constexpr /*implicit*/ BasicStringView(U&& other) noexcept: BasicStringView{Implementation::StringViewConverter<T, typename std::decay<U&&>::type>::from(Utility::forward<U>(other))} {}
 
@@ -308,7 +314,7 @@ BasicStringView {
 
         constexpr BasicStringView<T> slice(std::size_t begin, std::size_t end) const;
 
-        template<class U, class = typename std::enable_if<std::is_convertible<U, T*>::value && !std::is_convertible<U, std::size_t>::value>::type> constexpr BasicStringView<T> sliceSize(U begin, std::size_t size) const {
+        template<class U, typename std::enable_if<std::is_convertible<U, T*>::value && !std::is_convertible<U, std::size_t>::value, int>::type = 0> constexpr BasicStringView<T> sliceSize(U begin, std::size_t size) const {
             return slice(begin, begin + size);
         }
 
@@ -316,7 +322,7 @@ BasicStringView {
             return slice(begin, begin + size);
         }
 
-        template<class U, class = typename std::enable_if<std::is_convertible<U, T*>::value && !std::is_convertible<U, std::size_t>::value>::type> constexpr BasicStringView<T> prefix(U end) const {
+        template<class U, typename std::enable_if<std::is_convertible<U, T*>::value && !std::is_convertible<U, std::size_t>::value, int>::type = 0> constexpr BasicStringView<T> prefix(U end) const {
             return static_cast<T*>(end) ? slice(_data, end) : BasicStringView<T>{};
         }
 
@@ -344,11 +350,11 @@ BasicStringView {
 
         BasicStringView<T> exceptPrefix(StringView prefix) const;
 
-        template<class = typename std::enable_if<std::is_same<typename std::decay<T>::type, char>::value>::type> BasicStringView<T> exceptPrefix(T&& prefix) const = delete;
+        template<typename std::enable_if<std::is_same<typename std::decay<T>::type, char>::value, int>::type = 0> BasicStringView<T> exceptPrefix(T&& prefix) const = delete;
 
         BasicStringView<T> exceptSuffix(StringView suffix) const;
 
-        template<class = typename std::enable_if<std::is_same<typename std::decay<T>::type, char>::value>::type> BasicStringView<T> exceptSuffix(T&& suffix) const = delete;
+        template<typename std::enable_if<std::is_same<typename std::decay<T>::type, char>::value, int>::type = 0> BasicStringView<T> exceptSuffix(T&& suffix) const = delete;
 
         BasicStringView<T> trimmed(StringView characters) const {
             return trimmedPrefix(characters).trimmedSuffix(characters);
@@ -637,7 +643,7 @@ class CORRADE_UTILITY_EXPORT String {
         /*implicit*/ String(StringView view);
         /*implicit*/ String(MutableStringView view);
 
-        template<class T, class = typename std::enable_if<std::is_convertible<T, const char*>::value && !std::is_convertible<T, std::size_t>::value>::type> /*implicit*/ String(T data): String{nullptr, nullptr, nullptr, data} {}
+        template<class T, typename std::enable_if<std::is_convertible<T, const char*>::value && !std::is_convertible<T, std::size_t>::value, int>::type = 0> /*implicit*/ String(T data): String{nullptr, nullptr, nullptr, data} {}
 
         /*implicit*/ String(const char* data, std::size_t size);
 
@@ -657,7 +663,7 @@ class CORRADE_UTILITY_EXPORT String {
 
         explicit String(const char* data, std::size_t size, Deleter deleter) noexcept: String{const_cast<char*>(data), size, deleter} {}
 
-        template<class T, class = typename std::enable_if<std::is_convertible<T, Deleter>::value && !std::is_convertible<T, std::size_t>::value, const char*>::type> String(const char* data, T deleter) noexcept: String{deleter, nullptr, const_cast<char*>(data)} {}
+        template<class T, typename std::enable_if<std::is_convertible<T, Deleter>::value && !std::is_convertible<T, std::size_t>::value, int>::type = 0> String(const char* data, T deleter) noexcept: String{deleter, nullptr, const_cast<char*>(data)} {}
 
         explicit String(std::nullptr_t, std::size_t size, Deleter deleter) = delete;
 
@@ -724,19 +730,19 @@ class CORRADE_UTILITY_EXPORT String {
         MutableStringView slice(std::size_t begin, std::size_t end);
         StringView slice(std::size_t begin, std::size_t end) const;
 
-        template<class T, class = typename std::enable_if<std::is_convertible<T, char*>::value && !std::is_convertible<T, std::size_t>::value>::type> MutableStringView sliceSize(T begin, std::size_t size) {
+        template<class T, typename std::enable_if<std::is_convertible<T, char*>::value && !std::is_convertible<T, std::size_t>::value, int>::type = 0> MutableStringView sliceSize(T begin, std::size_t size) {
             return sliceSizePointerInternal(begin, size);
         }
-        template<class T, class = typename std::enable_if<std::is_convertible<T, const char*>::value && !std::is_convertible<T, std::size_t>::value>::type> StringView sliceSize(T begin, std::size_t size) const {
+        template<class T, typename std::enable_if<std::is_convertible<T, const char*>::value && !std::is_convertible<T, std::size_t>::value, int>::type = 0> StringView sliceSize(T begin, std::size_t size) const {
             return sliceSizePointerInternal(begin, size);
         }
         MutableStringView sliceSize(std::size_t begin, std::size_t size);
         StringView sliceSize(std::size_t begin, std::size_t size) const;
 
-        template<class T, class = typename std::enable_if<std::is_convertible<T, char*>::value && !std::is_convertible<T, std::size_t>::value>::type> MutableStringView prefix(T end) {
+        template<class T, typename std::enable_if<std::is_convertible<T, char*>::value && !std::is_convertible<T, std::size_t>::value, int>::type = 0> MutableStringView prefix(T end) {
             return prefixPointerInternal(end);
         }
-        template<class T, class = typename std::enable_if<std::is_convertible<T, const char*>::value && !std::is_convertible<T, std::size_t>::value>::type> StringView prefix(T end) const {
+        template<class T, typename std::enable_if<std::is_convertible<T, const char*>::value && !std::is_convertible<T, std::size_t>::value, int>::type = 0> StringView prefix(T end) const {
             return prefixPointerInternal(end);
         }
 
@@ -761,14 +767,14 @@ class CORRADE_UTILITY_EXPORT String {
         MutableStringView exceptPrefix(StringView prefix);
         StringView exceptPrefix(StringView prefix) const;
 
-        template<class T, class = typename std::enable_if<std::is_same<typename std::decay<T>::type, char>::value>::type> MutableStringView exceptPrefix(T&& prefix) = delete;
-        template<class T, class = typename std::enable_if<std::is_same<typename std::decay<T>::type, char>::value>::type> StringView exceptPrefix(T&& prefix) const = delete;
+        template<class T, typename std::enable_if<std::is_same<typename std::decay<T>::type, char>::value, int>::type = 0> MutableStringView exceptPrefix(T&& prefix) = delete;
+        template<class T, typename std::enable_if<std::is_same<typename std::decay<T>::type, char>::value, int>::type = 0> StringView exceptPrefix(T&& prefix) const = delete;
 
         MutableStringView exceptSuffix(StringView suffix);
         StringView exceptSuffix(StringView suffix) const;
 
-        template<class T, class = typename std::enable_if<std::is_same<typename std::decay<T>::type, char>::value>::type> MutableStringView exceptSuffix(T&& suffix) = delete;
-        template<class T, class = typename std::enable_if<std::is_same<typename std::decay<T>::type, char>::value>::type> StringView exceptSuffix(T&& suffix) const = delete;
+        template<class T, typename std::enable_if<std::is_same<typename std::decay<T>::type, char>::value, int>::type = 0> MutableStringView exceptSuffix(T&& suffix) = delete;
+        template<class T, typename std::enable_if<std::is_same<typename std::decay<T>::type, char>::value, int>::type = 0> StringView exceptSuffix(T&& suffix) const = delete;
 
         MutableStringView trimmed(StringView characters);
         StringView trimmed(StringView characters) const;
@@ -971,7 +977,8 @@ template<> struct StringViewConverter<char, std::string_view> {
 
 #endif
 #endif
-#ifdef CORRADE_STRING_IMPLEMENTATION
+#if defined(CORRADE_STRING_IMPLEMENTATION) && !defined(CorradeString_hpp_implementation)
+#define CorradeString_hpp_implementation
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>

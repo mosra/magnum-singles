@@ -13,6 +13,8 @@
     -   GitHub project page — https://github.com/mosra/corrade
     -   GitHub Singles repository — https://github.com/mosra/magnum-singles
 
+    v2020.06-1890-g77f9f (2025-04-11)
+    -   Cleanup and unification of SFINAE code, no functional change
     v2020.06-1506-g43e1c (2023-09-13)
     -   Preventing a conflict with the EnumSet declaration in Corrade's
         Containers.h due to default template arguments being used in both
@@ -23,14 +25,14 @@
     v2020.06-1075-gdd71 (2022-10-13)
     -   Initial release
 
-    Generated from Corrade v2020.06-1506-g43e1c (2023-09-13), 265 / 1705 LoC
+    Generated from Corrade v2020.06-1890-g77f9f (2025-04-11), 269 / 1703 LoC
 */
 
 /*
     This file is part of Corrade.
 
     Copyright © 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016,
-                2017, 2018, 2019, 2020, 2021, 2022, 2023
+                2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025
               Vladimír Vondruš <mosra@centrum.cz>
 
     Permission is hereby granted, free of charge, to any person obtaining a
@@ -200,7 +202,9 @@ class EnumSet {
         UnderlyingType _value;
 };
 
-template<class T, class = typename std::enable_if<std::is_enum<T>::value>::type> constexpr typename std::underlying_type<T>::type enumCastUnderlyingType(T value) {
+template<class T
+    , class = typename std::enable_if<std::is_enum<T>::value>::type
+> constexpr typename std::underlying_type<T>::type enumCastUnderlyingType(T value) {
     return typename std::underlying_type<T>::type(value);
 }
 
