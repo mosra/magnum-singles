@@ -26,6 +26,10 @@
 
 #define MAGNUM_MATH_BATCH_IMPLEMENTATION
 #include "../MagnumMathBatch.hpp"
+/* Including second time to verify the implementation (or other) symbols don't
+   get accidentally defined twice. See comment in the input file for details
+   how this can happen in practice. */
+#include "../MagnumMathBatch.hpp"
 
 using namespace Magnum;
 

@@ -26,6 +26,10 @@
 
 #define MAGNUM_MESHTOOLS_IMPLEMENTATION
 #include "../MagnumMeshTools.hpp"
+/* Including second time to verify the implementation (or other) symbols don't
+   get accidentally defined twice. See comment in the input file for details
+   how this can happen in practice. */
+#include "../MagnumMeshTools.hpp"
 
 using namespace Magnum;
 

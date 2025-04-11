@@ -25,6 +25,10 @@
 */
 
 #include "../CorradeStlMath.h"
+/* Including second time to verify some symbols don't get accidentally defined
+   twice due to missing include guards. Mainly important for files that have an
+   implementation part, but doesn't hurt to test for all. */
+#include "../CorradeStlMath.h"
 
 int main() {
     /* std::sin() and such should still be available */
