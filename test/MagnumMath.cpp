@@ -43,5 +43,6 @@ using namespace Magnum;
 int main() {
     Vector4i a{3, 42, 57, -1};
 
-    return a[1] - 42;
+    /* The log2() call tests code from MAGNUM_MATH_IMPLEMENTATION */
+    return a[1] - 40 - Math::log2(4);
 }

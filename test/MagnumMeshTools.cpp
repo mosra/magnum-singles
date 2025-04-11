@@ -41,5 +41,6 @@ using namespace Magnum;
 */
 
 int main() {
+    /* This tests code from MAGNUM_MESHTOOLS_IMPLEMENTATION */
     return MeshTools::generateTriangleFanIndices(10)[6];
 }

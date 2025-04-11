@@ -57,5 +57,7 @@ CORRADE_CPU_DISPATCHED_POINTER(fooImplementation, int (*foo)())
 #endif
 
 int main() {
+    /* CORRADE_CPU_IMPLEMENTATION has code only on ARM and Apple, and it's
+       executed as part of the dispatch */
     return foo() - 42;
 }

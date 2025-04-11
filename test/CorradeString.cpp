@@ -47,6 +47,8 @@ using namespace Corrade::Containers::Literals;
 */
 
 int main() {
-    /* The character lookup delegates to an AVX/SSE, NEON or WASM variant */
+    /* The character lookup delegates to an AVX/SSE, NEON or WASM variant. This
+       also tests the code from both CORRADE_CPU_IMPLEMENTATION and
+       CORRADE_STRING_IMPLEMENTATION. */
     return Containers::String{"hello"_s}.contains('l') ? 0 : 1;
 }

@@ -43,6 +43,7 @@ using namespace Magnum;
 int main() {
     const Long in[]{3, 5, -17, 32};
     Short out[4];
+    /* The castInto() tests code from MAGNUM_MATH_BATCH_IMPLEMENTATION */
     Math::castInto(Containers::stridedArrayView(in),
                    Containers::stridedArrayView(out));
 
